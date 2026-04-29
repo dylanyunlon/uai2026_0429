@@ -1,0 +1,2152 @@
+\documentclass{uai2026} % for initial submission
+%\documentclass[accepted]{uai2026} % after acceptance, for a revised version; 
+% also before submission to see how the non-anonymous paper would look like 
+                        
+%% There is a class option to choose the math font
+% \documentclass[mathfont=ptmx]{uai2026} % ptmx math instead of Computer
+                                         % Modern (has noticeable issues)
+% \documentclass[mathfont=newtx]{uai2026} % newtx fonts (improves upon
+                                          % ptmx; less tested, no support)
+% NOTE: Only keep *one* line above as appropriate, as it will be replaced
+%       automatically for papers to be published. Do not make any other
+%       change above this note for an accepted version.
+
+%% Choose your variant of English; be consistent
+\usepackage[american]{babel}
+% \usepackage[british]{babel}
+
+%% Some suggested packages, as needed:
+\usepackage{natbib} % has a nice set of citation styles and commands
+    \bibliographystyle{plainnat}
+    \renewcommand{\bibsection}{\subsubsection*{References}}
+\usepackage{mathtools} % amsmath with fixes and additions
+% \usepackage{siunitx} % for proper typesetting of numbers and units
+\usepackage{booktabs} % commands to create good-looking tables
+\usepackage{tikz} % nice language for creating drawings and diagrams
+
+% --- 基础功能 ---
+\usepackage{graphicx}        % 插图
+\usepackage{xcolor}          % 颜色
+\usepackage{array, multirow, colortbl}  % 表格增强
+\usepackage{caption, subcaption}  % 图表标题与子图
+\usepackage{balance}         % 平衡最后一页双栏
+\usepackage{pgfplots}  % 绘图
+\usepackage{algorithm, algorithmic} % 算法环境
+\usepackage{float} 
+\setlength{\intextsep}{4pt}
+\setlength{\textfloatsep}{4pt}
+\setlength{\floatsep}{4pt}
+% --- 数学支持 ---
+\let\Bbbk\relax
+\usepackage{amsmath, amssymb, amsthm, bm}
+
+% --- 定理类环境 ---
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+\newtheorem{assumption}{Assumption}
+\newtheorem{observation}{Observation}
+
+% --- Unicode字符映射（防止 α, − 等出错）---
+\usepackage{newunicodechar}
+\newunicodechar{−}{-}
+\newunicodechar{α}{\alpha}
+\newunicodechar{β}{\beta}
+\newunicodechar{γ}{\gamma}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem} % 不想按section编号就删掉 [section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+%% Provided macros
+% \smaller: Because the class footnote size is essentially LaTeX's \small,
+%           redefining \footnotesize, we provide the original \footnotesize
+%           using this macro.
+%           (Use only sparingly, e.g., in drawings, as it is quite small.)
+
+%% Self-defined macros
+\newcommand{\swap}[3][-]{#3#1#2} % just an example
+
+\title{Though Language Models Err While They Strive: Conformal Prediction for Self-Correcting Scientific Generation}
+
+% The standard author block has changed for UAI 2026 to provide
+% more space for long author lists and allow for complex affiliations
+%
+% All author information is authomatically removed by the class for the
+% anonymous submission version of your paper, so you can already add your
+% information below.
+%
+% Add authors
+\author[1]{\href{mailto:<jj@example.edu>?Subject=Your UAI 2026 paper}{Jane~J.~von~O'L\'opez}{}}
+\author[1]{Harry~Q.~Bovik}
+\author[1,2]{Further~Coauthor}
+\author[3]{Further~Coauthor}
+\author[1]{Further~Coauthor}
+\author[3]{Further~Coauthor}
+\author[3,1]{Further~Coauthor}
+% Add affiliations after the authors
+\affil[1]{%
+    Computer Science Dept.\\
+    Cranberry University\\
+    Pittsburgh, Pennsylvania, USA
+}
+\affil[2]{%
+    Second Affiliation\\
+    Address\\
+    …
+}
+\affil[3]{%
+    Another Affiliation\\
+    Address\\
+    …
+  }
+  
+  \begin{document}
+\maketitle
+
+\begin{abstract}
+Large language models frequently produce technically fluent but scientifically invalid content. We present \textbf{Scientific Feasibility Control (SFC)}, a graph-structured conformal prediction framework that enforces statistical validity in scientific reasoning through progressive \textit{absolute-coherent-factuality} validation. SFC decomposes reasoning into atomic units that must satisfy both scientific correctness and logical support from prior verified context, and models their dependencies as approximate deducibility graphs. During generation, it validates each step online and branches to alternative continuations whenever a violation is detected, preventing early errors from propagating. On PhyX, MATH, ScienceQA, and ARC Challenge, SFC achieves \textbf{50.1\%} on PhyX, exceeding \textbf{DeepSeek-R1 (49.8\%)} and \textbf{GPT-4 (45.8\%)}. It further reaches \textbf{91.7\%} scientific validity with conformal guarantees at $\alpha = 0.10$ and reduces scientific law violations by \textbf{73\%} across multiple model families.
+\end{abstract}
+
+\section{Introduction}
+
+Large language models have demonstrated remarkable progress in scientific applications, from mathematical problem-solving to experimental protocol generation. However, their deployment in scientific domains faces a critical challenge: frequent violations of fundamental scientific principles that undermine reliability. On the challenging PhyX physics reasoning benchmark, state-of-the-art models like GPT-4 achieve only 43.5\% accuracy, with substantial errors stemming from conservation law violations, thermodynamic inconsistencies, and cascading logical failures.
+
+The core problem lies in the structured nature of scientific reasoning. Unlike independent factual claims, scientific arguments form coherent logical chains where each statement must be substantiated by preceding evidence and established principles. Current factuality control methods assume independence between generated claims—an assumption that fundamentally misaligns with scientific reasoning's dependency structure. When applied to scientific reasoning, independence-based filtering creates logically inconsistent outputs where individually correct statements form invalid reasoning chains.
+
+We introduce Scientific Feasibility Control (SFC), a dynamic graph-structured conformal prediction framework that addresses these limitations through two key innovations. In particular, we formalize \emph{absolute-coherent-factuality}—a notion of scientific validity requiring both individual statement correctness and logical substantiation from preceding context. Each claim must satisfy: (i) absolute correctness against ground truth scientific laws, (ii) coherent substantiation from verified context, and (iii) dependency consistency within the reasoning chain.Additionally, we model scientific reasoning as \emph{approximate deducibility graphs} where vertices represent atomic scientific claims and edges capture logical dependencies. This enables dynamic graph-structured conformal prediction that provides finite-sample coverage guarantees while preserving reasoning coherence.
+
+Our approach operates through progressive validation with dynamic branching. As each statement is generated, specialized validators assess scientific feasibility against accumulated context using rule-based verification of fundamental laws, neural semantic assessment, and cross-fact consistency checks. When violations are detected, the system dynamically branches to alternative generation paths, ensuring scientific grounding without compromising logical flow.
+
+
+
+\section{Related Work}
+
+Conformal prediction provides distribution-free uncertainty quantification with finite-sample guarantees under exchangeability assumptions \cite{pmlr-v216-ghosh23a,pmlr-v244-colombo24a}. Efficient post-hoc conformal constructions continue to make calibration practical for large-scale applications \cite{pmlr-v244-colombo24a,pmlr-v286-shahrokhi25a}. While conformal prediction has been explored in graph settings, this has largely focused on graph neural networks and graph-structured calibration \cite{pmlr-v286-akgul25a,pmlr-v286-zhang25g}, rather than induced graphs for structured reasoning as we propose. Additionally, conformal prediction has also been extended to structured-output and deep generative settings \cite{pmlr-v286-shahrokhi25a}.
+
+Sequential and staged reasoning has motivated explicit consistency constraints across intermediate predictions \cite{pmlr-v244-jazbec24a}. Pre-trained language models and uncertainty-aware language modeling methods demonstrate improved performance on language tasks but still exhibit uncertainty, factuality, and consistency failures without formal guarantees \cite{pmlr-v216-li23d,pmlr-v286-li25b}. Recent UAI studies on long-form generation and black-box LLM uncertainty reveal systematic failure patterns in language reasoning, including subgroup inconsistency, confabulation, and generation-level instability \cite{pmlr-v286-liu25a,pmlr-v286-xiao25a,pmlr-v286-li25b}. Our approach directly addresses these patterns through specialized validation mechanisms.
+
+Recent work on validation and alignment has explored preference-aware optimization and ongoing validation for language and decision-support models \cite{pmlr-v244-lin24a,pmlr-v286-chen25b}, while uncertainty-aware multi-modal modeling has been studied in translation and related settings \cite{pmlr-v286-liu25c}. Our validation framework incorporates multi-modal assessment but focuses specifically on scientific feasibility with formal guarantees rather than general correctness, preference alignment, or broad safety objectives.
+
+Progressive prediction methods with nested prediction sets and online recalibration allow iterative refinement \cite{pmlr-v244-jazbec24a,pmlr-v286-deshpande25a}. However, our progressive validation differs by providing real-time scientific feasibility assessment with formal guarantees.
+
+\section{Preliminaries}
+
+\subsection{Setup and Notation}
+
+As is standard in the language model generation setting, we assume that the language model takes input $X \in \mathcal{X}$ (scientific queries) and generates an output $Y \in \mathcal{Y}$. We further assume that an output $Y$ can be decomposed into atomic units for scientific validation, and our goal is to filter the output to retain units that are both scientifically valid and logically substantiated. Note that we do not attempt formal definitions for the boundaries of scientific reasoning, and we ultimately evaluate our method's performance with domain expert annotations on physics problems.
+
+\begin{definition}[Fact-Option]
+\label{def:fact-option}
+A fact-option is an atomic scientific proposition that can be independently verified against physical laws. We define $\mathcal{F}$ as the set of all fact-options.
+\end{definition}
+
+\textbf{Why this definition?} We need to decompose complex scientific reasoning into verifiable atomic units to enable systematic validation. This atomic decomposition allows us to assess each claim's validity independently while preserving logical dependencies through our graph structure.
+
+\textbf{Examples}: Fact-options might assert things like ``The kinetic energy equals $\frac{1}{2}mv^2$'' or ``Energy is conserved in this system.'' The set of fact-options $\mathcal{F}$ can also contain assertions that violate physical laws, for example that ``Energy can be created from nothing.''
+
+Note that we do not formalize where the boundaries are for what makes a particular string an atomic ``fact-option''; we assume access to a fact-option splitter function, which takes language model outputs in $\mathcal{Y}$ and maps them to a set of discrete fact-options. We write this as $S : \mathcal{Y} \rightarrow 2^{\mathcal{F}}$. In practice, we use a physics-trained language model to implement fact-option splitting.
+
+\begin{definition}[Scientific Ground Truth]
+\label{def:ground-truth}
+The scientific ground truth $\mathcal{T} \subseteq \mathcal{F}$ is the subset of all fact-options we assume to be valid according to established physical laws, conservation principles, and verified experimental results.
+\end{definition}
+
+In particular, this set represents the fundamental laws of physics from which we base our evaluations of scientific validity. In practice, we choose references like physics textbooks or peer-reviewed literature as our ground truth. It is important to note that the ground truth enforces strict physical consistency—for instance, while a claim about perpetual motion might be linguistically coherent, it violates thermodynamic principles and thus cannot be in $\mathcal{T}$.
+
+\subsection{Background: Independence-Based and Structure-Aware Conformal}
+\citet{mohri2024language} enhance language model factuality by decomposing generations into subclaims and applying conformal prediction to filter low-confidence statements. Their approach computes confidence scores $\sigma : C \rightarrow [0,1]$ for each subclaim through comparison with alternative generations. Detailed explanations of all symbols can be found in Appendix~\ref{app:notation}. 
+More formally, they frame factuality in terms of entailment by ground truth $\mathcal{C}_{\text{true}}$, where a claim $c$ is factual if $\mathcal{C}_{\text{true}} \Rightarrow c$ (see Appendix~\ref{app:mohri_details}). For each output, the non-conformity score is defined as:
+$$r(X,Y,T) = \inf\{\tau \in T : \forall j \geq \tau, \forall y \in \mathcal{S}(Y)$$
+
+Given calibration set $(X_1,Y_1),\ldots,(X_n,Y_n)$, 
+they order non-confo
+-rmity scores and take $\hat{q}_\alpha$ 
+as the $\lceil (n+1)(1-\alpha) \rceil$ quantile, 
+yielding the split conformal guarantee:
+\[
+1-\alpha \leq 
+P\big[r(X_{n+1},Y_{n+1},T) \leq \hat{q}_\alpha\big] 
+\leq 1-\alpha+\tfrac{1}{n+1}.
+\]
+
+
+Critically, \citet{mohri2024language} assume that:
+$$(\forall y \in \mathcal{S}(Y), \mathcal{C}_{\text{true}} \Rightarrow y) \Leftrightarrow (Y \text{ is factual})$$
+This treats each claim's correctness independently, which suffices for recall tasks like biography generation but fails for reasoning tasks where statements must be substantiated by preceding context.
+\citet{rubin-toles2025conformal} address this limitation by introducing "coherent factuality" for reasoning tasks. They construct a deducibility graph $G = (V,E)$ where nodes represent claims and edges capture logical dependencies. Their approach employs two scoring strategies: graph-independent $\sigma(v) = \sigma_{\text{ind}}(v)$ and descendant-weighted $\sigma(v) = (1-\beta)\sigma_{\text{ind}}(v) + \beta\text{median}\{\sigma_{\text{ind}}(v') : v' \text{ is descendant of } v\}$.
+
+The non-conformity score becomes:
+$$r(X,Y,U_T) = \sup\{\tau_r \in \mathbb{R} \mid \forall(U,\tau) \in U_T \text{ with } \tau \leq \tau_r\text{}\}$$
+
+Their main theoretical result establishes that for ancestor-connec
+-ted subgraphs satisfying certain properties, the conformal guarantee transfers to coherent factuality (see Appendix~\ref{app:coherent_proof}). Specifically, they prove that $(r(X_{n+1}) \geq 1-\hat{q}_\alpha) \Leftrightarrow (Y^{\hat{q}_\alpha}_{n+1} \text{ is coherently factual})$, where coherent factuality requires that each topological sort of the filtered subgraph maintains logical consistency. This framework ensures that filtered outputs preserve reasoning structure while providing conformal guarantees, but assumes access to ground-truth logical dependencies that may be unavailable in practice.
+
+% \begin{figure*}[htbp]
+% \centering
+
+% \begin{subfigure}[b]{0.48\textwidth}
+% \centering
+% \begin{tikzpicture}
+% \begin{axis}[
+%     width=\textwidth,
+%     height=6cm,
+%     xlabel={Target Factuality (1 - alpha)},
+%     ylabel={Realized Absolute-Coherent-Factuality},
+%     title={Scientific Feasibility Calibration Plot},
+%     xmin=0.74, xmax=0.96,
+%     ymin=0.65, ymax=1.02,
+%     grid=none,
+%     legend pos=south east,
+%     legend style={
+%         fill=white,
+%         draw=black,
+%         font=\tiny
+%     },
+%     tick label style={font=\scriptsize},
+%     label style={font=\footnotesize},
+%     title style={font=\small}
+% ]
+% % Conformal Bounds (dashed black line)
+% \addplot[
+%     color={rgb,255:red,78; green,185; blue,211},
+%     line width=1.5pt,
+%     dashed,
+%     mark=none
+% ] coordinates {
+%     (0.75, 0.76) (0.77, 0.78) (0.79, 0.82) (0.81, 0.84) 
+%     (0.83, 0.86) (0.85, 0.88) (0.87, 0.90) (0.89, 0.92) 
+%     (0.91, 0.94) (0.93, 0.96) (0.95, 0.98) (0.96, 1.00)
+% };
+% % Subgraph Filtering (GPT Dependency Graph) - blue line
+% \addplot[
+%     color={rgb,255:red,59; green,83; blue,135},
+%     line width=2pt,
+%     mark=none
+% ] coordinates {
+%     (0.75, 0.77) (0.77, 0.79) (0.79, 0.81) (0.81, 0.81) 
+%     (0.83, 0.89) (0.85, 0.88) (0.87, 0.88) (0.89, 0.96) 
+%     (0.91, 0.97) (0.93, 0.98) (0.95, 0.99) (0.96, 1.00)
+% };
+% % Post-Hoc Filtering - green line
+% \addplot[
+%     color={rgb,255:red,3; green,159; blue,137},
+%     line width=2pt,
+%     mark=none
+% ] coordinates {
+%     (0.75, 0.79) (0.77, 0.82) (0.79, 0.85) (0.81, 0.87) 
+%     (0.83, 0.90) (0.85, 0.89) (0.87, 0.89) (0.89, 0.97) 
+%     (0.91, 0.97) (0.93, 0.98) (0.95, 0.99) (0.96, 1.00)
+% };
+% % Empty Dependency Graph (Baseline) - orange line
+% \addplot[
+%     color={rgb,255:red,217; green,71; blue,56},
+%     line width=2pt,
+%     mark=none
+% ] coordinates {
+%     (0.75, 0.75) (0.77, 0.76) (0.79, 0.76) (0.81, 0.75) 
+%     (0.83, 0.73) (0.85, 0.72) (0.87, 0.71) (0.89, 0.67) 
+%     (0.91, 0.70) (0.93, 0.71) (0.95, 0.97) (0.96, 1.00)
+% };
+% % Upper conformal bound (dashed black line)
+% \addplot[
+%     color={rgb,255:red,78; green,185; blue,211},
+%     line width=1.5pt,
+%     dashed,
+%     mark=none
+% ] coordinates {
+%     (0.75, 0.78) (0.77, 0.80) (0.79, 0.84) (0.81, 0.86) 
+%     (0.83, 0.88) (0.85, 0.91) (0.87, 0.93) (0.89, 0.95) 
+%     (0.91, 0.97) (0.93, 0.99) (0.95, 1.01) (0.96, 1.02)
+% };
+% \legend{
+%     Conformal Bounds,
+%     Subgraph Filtering,
+%     Post-Hoc Filtering,
+%     Baseline
+% }
+% \end{axis}
+% \end{tikzpicture}
+% \caption{Calibration plot showing relationship between target and realized factuality.}
+% \label{fig:calibration}
+% \end{subfigure}
+% \hfill
+% \begin{subfigure}[b]{0.48\textwidth}
+% \centering
+% \begin{tikzpicture}
+% \begin{axis}[
+%     width=\textwidth,
+%     height=6cm,
+%     xlabel={Absolute-Coherent-Factuality},
+%     ylabel={Percent of Claims Retained},
+%     title={Fact-Option Retention vs. Scientific Validity},
+%     xmin=0.75, xmax=0.96,
+%     ymin=0.1, ymax=1.05,
+%     grid=none,
+%     legend pos=south east,
+%     legend style={
+%         fill=white,
+%         draw=black,
+%         font=\tiny
+%     },
+%     tick label style={font=\scriptsize},
+%     label style={font=\footnotesize},
+%     title style={font=\small},
+%     error bars/.cd,
+%     y dir=both,
+%     y explicit
+% ]
+% % Subgraph Filtering (GPT Dependency Graph) - blue line with error bars
+% \addplot[
+%     color={rgb,255:red,59; green,83; blue,135},
+%     line width=2pt,
+%     mark=+,
+%     mark size=3pt,
+%     error bars/.cd,
+%     y dir=both,
+%     y explicit
+% ] coordinates {
+%     (0.76, 0.96) +- (0, 0.02)
+%     (0.78, 0.96) +- (0, 0.02)
+%     (0.80, 0.94) +- (0, 0.02)
+%     (0.82, 0.92) +- (0, 0.02)
+%     (0.84, 0.90) +- (0, 0.02)
+%     (0.86, 0.88) +- (0, 0.02)
+%     (0.88, 0.85) +- (0, 0.02)
+%     (0.90, 0.84) +- (0, 0.02)
+%     (0.92, 0.78) +- (0, 0.02)
+%     (0.94, 0.70) +- (0, 0.02)
+%     (0.95, 0.56) +- (0, 0.02)
+% };
+% % Descendants Weight Boosting - red line with error bars
+% \addplot[
+%    color={rgb,255:red,106; green,93; blue,196},
+%    line width=2pt,
+%     mark=+,
+%     mark size=3pt,
+%     error bars/.cd,
+%     y dir=both,
+%     y explicit
+% ] coordinates {
+%     (0.76, 0.99) +- (0, 0.01)
+%     (0.78, 0.97) +- (0, 0.01)
+%     (0.80, 0.95) +- (0, 0.01)
+%     (0.82, 0.93) +- (0, 0.01)
+%     (0.84, 0.91) +- (0, 0.01)
+%     (0.86, 0.87) +- (0, 0.02)
+%     (0.88, 0.76) +- (0, 0.02)
+%     (0.90, 0.72) +- (0, 0.02)
+%     (0.92, 0.68) +- (0, 0.02)
+%     (0.94, 0.56) +- (0, 0.02)
+%     (0.95, 0.47) +- (0, 0.02)
+% };
+% % Post-Hoc Filtering - green line with error bars
+% \addplot[
+%     color={rgb,255:red,3; green,159; blue,137},
+%     line width=2pt,
+%     mark=+,
+%     mark size=3pt,
+%     error bars/.cd,
+%     y dir=both,
+%     y explicit
+% ] coordinates {
+%     (0.76, 0.97) +- (0, 0.01)
+%     (0.78, 0.96) +- (0, 0.01)
+%     (0.80, 0.94) +- (0, 0.01)
+%     (0.82, 0.93) +- (0, 0.01)
+%     (0.84, 0.91) +- (0, 0.01)
+%     (0.86, 0.89) +- (0, 0.01)
+%     (0.88, 0.87) +- (0, 0.01)
+%     (0.90, 0.82) +- (0, 0.02)
+%     (0.92, 0.77) +- (0, 0.02)
+%     (0.94, 0.69) +- (0, 0.02)
+%     (0.95, 0.54) +- (0, 0.02)
+% };
+% % Empty Dependency Graph (Baseline) - orange line with error bars
+% \addplot[
+%     color={rgb,255:red,217; green,71; blue,56},
+%     line width=2pt,
+%     mark=+,
+%     mark size=3pt,
+%     error bars/.cd,
+%     y dir=both,
+%     y explicit
+% ] coordinates {
+%     (0.76, 0.65) +- (0, 0.03)
+%     (0.78, 0.59) +- (0, 0.03)
+%     (0.80, 0.76) +- (0, 0.03)
+%     (0.81, 0.85) +- (0, 0.03)
+%     (0.82, 0.90) +- (0, 0.03)
+%     (0.86, 0.26) +- (0, 0.03)
+% };
+% % Subgraph Filtering (Linear Dependency Graph) - purple line with error bars
+% \addplot[
+%     color=purple,
+%     line width=2pt,
+%     mark=+,
+%     mark size=3pt,
+%     error bars/.cd,
+%     y dir=both,
+%     y explicit
+% ] coordinates {
+%     (0.76, 0.90) +- (0, 0.04)
+%     (0.78, 0.82) +- (0, 0.04)
+%     (0.80, 0.78) +- (0, 0.04)
+%     (0.82, 0.78) +- (0, 0.04)
+%     (0.84, 0.76) +- (0, 0.04)
+%     (0.86, 0.74) +- (0, 0.04)
+%     (0.88, 0.70) +- (0, 0.04)
+%     (0.90, 0.66) +- (0, 0.04)
+%     (0.92, 0.62) +- (0, 0.04)
+%     (0.94, 0.58) +- (0, 0.04)
+%     (0.95, 0.20) +- (0, 0.05)
+% };
+% \legend{
+%     SFC (Graph Independent),
+%     SFC (Descendant Weight),
+%     Post-Hoc Filtering,
+%     Independent Baseline,
+%     Linear Dependency Graph
+% }
+% \end{axis}
+% \end{tikzpicture}
+% \caption{Fact-option retention rate versus scientific validity across different filtering methods specialized for physics reasoning.}
+% \label{fig:claims_retained}
+% \end{subfigure}
+% \caption{Performance comparison of scientific feasibility control methods on PhyX physics reasoning benchmark. Our SFC approach maintains superior fact-option retention while ensuring absolute-coherent-factuality through progressive validation and dynamic branching.}
+% \label{fig:combined}
+% \end{figure*
+
+
+
+
+% \section{A New Notion of Factuality: Absolute-Coherent-Factuality}
+
+% While the approach of \citet{mohri2024language} calibrates to a useful notion of factuality, this notion implicitly makes the strong assumption that subclaims are independent, so we call it \emph{independent factuality}. Specifically, the assertion that $(\forall f \in S(Y), \mathcal{T} \Rightarrow f) \Leftrightarrow (Y \text{ is factual})$ treats each claim's correctness independently of the other claims in the generation. While this may be appropriate for pure recall tasks, like biography generation, we find that it is not sufficient to preserve output quality for reasoning tasks, particularly in scientific domains where physical laws impose strict constraints.
+
+% Our notion of \emph{absolute-coherent-factuality} further imposes coherence by requiring both correctness and substantiation, while ensuring absolute compliance with scientific principles.
+
+% \begin{definition}[Absolute-Coherent-Factuality]
+% \label{def:absolute-coherent-factuality}
+% Given an input $X$ and scientific ground truth $\mathcal{T}$, an output $Y_{\text{ordered}} = (f_1,\ldots,f_n) \in \mathcal{F}^n$ of distinct fact-options is absolute-coherent-factual if it satisfies:
+% $$\forall i \in [n], f_i \models \mathcal{T} \wedge f_i \text{ is deducible from } (f_1,\ldots,f_{i-1}), X, \mathcal{T}$$
+% \end{definition}
+
+% \textbf{Why this definition?} We need a notion of factuality that captures the essential structure of scientific reasoning: each step must be both individually correct and logically justified by what came before. This prevents the cascade effect where early errors propagate through the entire reasoning chain.
+
+% We require both absolute correctness against physical laws and coherent substantiation from verified context. Note that we require a fact-option in the ordering to be deducible from its prefix, the ground truth, and the input $X$, since information like variable definitions and physical assumptions will be sensitive to the scientific context.
+
+% \textbf{Computational Implementation of Deducibility}: The practical assessment of whether $f_i$ "is deducible from $(f_1,\ldots,f_{i-1}), X, \mathcal{T}$" represents a central computational challenge. We address this throug
+% -h a multi-tiered framework combining symbolic logical deduction, neural semantic entailment assessment, and domain-specific inference engines. Our implementation achieves substantial agreement with domain expert judgments (Cohen's $\kappa > 0.7$ across scientific domains) while maintaining computational efficiency necessary for real-time applications. Complete details of our deducibility computation methodology, including algorithmic specifications, calibration procedures, and validation against human expert annotations, are provided in Appendix~\ref{app:deducibility-computation}.
+
+% \begin{remark}
+% According to this definition, coherence cannot come at the cost of scientific validity. Deducibility requires that subsequent fact-options follow logically from established physics and verified prior claims. This prevents cascade effects where scientifically invalid early statements contaminate subsequent reasoning steps, a critical failure mode absent in independence-based approaches.
+% \end{remark}
+
+% Like independent factuality, absolute-coherent-factuality does not stipulate that the response is relevant or responsive to query $X$ (although it cannot contradict $X$), and would therefore consider logically consistent non-sequiturs to be correct. In the setting we consider, we find that requiring relevance is not necessary, since the language models we study consistently attempt a relevant response.
+
+% \textbf{Intuition}: Absolute-coherent-factuality ensures outputs contain sufficient reasoning between previous claims and subsequent ones and considers orderings of claims rather than simply sets. Steps must appear in logical sequence. For instance, a variable must be defined before it is used, and physical principles must be established before their application.
+
+% \begin{observation}
+% \label{obs:prefix-property}
+% If an ordering $(f_1,\ldots,f_n)$ is absolute-coherent-factual, any prefix $(f_1,\ldots,f_i)$ for $i < n$ is also absolute-coherent-factual.
+% \end{observation}
+
+% \subsection{Graphical Representations of Absolute-Coherent-Factuality}
+
+% It will be helpful for us to capture coherence graphically. To do so, we will make the following assumption: if a claim is deducible from some information, the claim remains deducible after adding more ``good'' information.
+
+% \begin{assumption}[Superstring Deducibility]
+% \label{ass:superstring}
+% Fix some input $X$, ground truth $\mathcal{T}$ and claim $f_n$. Say that $f_n$ is deducible from some ordering of $\{f_1,\ldots,f_{n-1}\}$, and call the ordering $Y_{\text{sub}}$. Then, if $Y_{\text{super}}$ is an absolute-coherent-factual ordering on a superset of $\{f_1,\ldots,f_{n-1}\}$, $f_n$ is also deducible from $Y_{\text{super}}$.
+% \end{assumption}
+
+% \textbf{Why this assumption?} This monotonicity property ensures that adding more verified scientific facts does not break existing deduction chains. This is reasonable in scientific contexts where additional true premises strengthen rather than weaken logical arguments.
+
+% \subsubsection{Ideal Deducibility Graphs}
+
+% For a particular $(X,Y), \mathcal{T}$, an oracle with perfect understanding of the ground truth could construct an ideal deducibility graph $G = (V,E)$. Define vertex set $V := \{S(Y), v_{\text{true}}\}$, with $v_{\text{true}}$ to stand in for all claims in $\mathcal{T}$ and question $X$ (as claims may be deducible from either/both of these). Then, edges indicate that a claim is deducible from its ancestors. In particular, the oracle could construct the edge set $E$ by iteratively considering topological layers beginning at the ground truth, asking, (Which claims are deducible from previous layers?) and drawing corresponding edges.
+
+% \begin{remark}
+% There may be multiple ideal deducibility graphs. For example, if a claim $c$ is deducible from $a$ or $b$, both deducible from $v_{\text{true}}$, there is no way to represent this relationship uniquely without a hypergraph; a graph with edge $(a,c)$ or $(b,c)$ could be obtained by the construction algorithm.
+% \end{remark}
+
+% This idealized construction yields a directed acyclic graph where substantiated claims descend from $v_{\text{true}}$, and erroneous or unsubstantiated claims do not. If we had such a graph, conformal filtering would be unnecessary; we would simply output the descendants of $v_{\text{true}}$ in topological order. However, this ideal is unattainable, as ground truth and deducibility are not easily defined. Instead, we develop approximations of these graphs that suffice to achieve absolute-coherent-factuality.
+
+% \subsubsection{Approximate Deducibility Graphs}
+
+% We define a weaker notion of an approximate deducibility graph and find this notion is satisfied by Claude-generated proxies. This weaker notion is sufficient to maintain coherence during filtering while ensuring calibrated guarantees on factuality. Unlike ideal graphs, these proxies do not trace claims to a ground truth or represent the minimal set needed to substantiate a claim; instead, they capture sufficient sets for substantiation.
+
+% \begin{definition}[Approximate Deducibility Graph]
+% \label{def:approximate-graph}
+% Let $G = (V,E)$ be a directed acyclic graph for $(X,Y), \mathcal{T}$. Each node $v \in V$ represents a fact-option $f \in S(Y)$. The edge set $E$ must satisfy: 
+
+% \textbf{Ancestor connectivity}: for any subgraph $G_{\text{sub}} = (V_{\text{sub}}, E_{\text{sub}})$ that includes all ancestors of its nodes, if an absolute-coherent-factual ordering exists for $V_{\text{sub}}$, then every topological ordering of $G_{\text{sub}}$ must also be absolute-coherent-factual.
+
+% \textbf{Consistency}: if an ancestor-connected subgraph $G_{\text{sub}}$ does not allow an absolute-coherent-factual ordering, then any larger subgraph $G_{\text{super}} \supseteq G_{\text{sub}}$ must not admit a coherent ordering.
+% \end{definition}
+
+% \textbf{Why this definition?} We need a tractable approximation of ideal deducibility that preserves the key properties needed for conformal prediction while being constructible in practice. The ancestor connectivity ensures that subgraphs respect logical dependencies, while consistency prevents contradictory graph structures.
+
+% In other words, we require that a particular claim is sufficiently substantiated by its ancestors (so a topological sort on those nodes will be absolute-coherent-factual if and only if the set does not contain erroneous claims). Since we assume we can access one such graph for each example, we would like to be assured that a graph satisfying this definition can always be constructed.
+
+% \begin{observation}[Approximate Deducibility Graph Realizability]
+% \label{obs:realizability}
+% For any $(X,Y), \mathcal{T}$, there exists a graph with vertex set $S(Y)$ satisfying Definition~\ref{def:approximate-graph}. The subgraph of the ideal deducibility graph $G = (V,E)$ induced on $V \setminus v_{\text{true}}$ (omitting the ground truth node) is an approximate deducibility graph.
+% \end{observation}
+
+% \begin{remark}
+% An ideal deducibility graph is minimal. Among all approximate graphs for a particular $(X,Y,\mathcal{T})$, there exists an ideal graph (minus $v_{\text{true}}$) with the minimum number of edges. Approximate graphs result from removing the ground truth node of an ideal graph and adding edges without introducing cycles (following Assumption~\ref{ass:superstring}). Approximate graphs enforce sufficient but not necessary substantiation.
+% \end{remark}
+
+% While an approximate deducibility graph must exist, we further assume that we can construct one for each $(X,Y)$. In practice, we employ template-based dynamic construction using deterministic dependency discovery algorithms during generation, ensuring graph validity through process invariance. Our template-matching approach satisfies Definition~\ref{def:approximate-graph} by construction, maintaining the theoretical requirements for calibration bounds through consistent dependency patterns across examples.
+
+% \begin{table*}[t]
+% \centering
+% \small
+% \caption{Comprehensive evaluation across scientific reasoning benchmarks (\%). SFC consistently outperforms baselines and recent reasoning models in both accuracy and scientific validity. Statistical significance at $p < 0.01$ for all comparisons via paired t-test.}
+% \label{tab:main_results}
+% \begin{tabular}{l|cc|cc|cc|cc}
+% \hline
+% \multirow{2}{*}{Method} & \multicolumn{2}{c|}{PhyX Physics} & \multicolumn{2}{c|}{MATH} & \multicolumn{2}{c|}{ScienceQA} & \multicolumn{2}{c}{ARC Challenge} \\
+% & Accuracy & Validity & Accuracy & Validity & Accuracy & Validity & Accuracy & Validity \\
+% \hline
+% GPT-4 Baseline & 45.8 & 76.8 & 42.3 & 81.2 & 78.6 & 85.1 & 82.4 & 88.9 \\
+% DeepSeek-R1-0528 & 49.8 & 82.1 & 71.2 & 86.4 & 81.2 & 87.3 & 85.1 & 89.7 \\
+% OpenAI o3-mini & 48.2 & 80.9 & 69.8 & 85.1 & 80.4 & 86.8 & 84.3 & 89.2 \\
+% Grok-3 & 46.7 & 79.4 & 68.1 & 84.6 & 79.1 & 86.2 & 83.7 & 88.8 \\
+% Independent Conformal & 44.8 & 84.5 & 43.1 & 87.2 & 79.2 & 89.4 & 82.9 & 91.1 \\
+% Post-hoc Filtering & 46.2 & 87.1 & 45.6 & 89.6 & 80.1 & 90.8 & 83.4 & 92.3 \\
+% \hline
+% \textbf{SFC (Graph Independent)} & \textbf{49.1} & \textbf{89.3} & 47.2 & \textbf{91.8} & \textbf{81.8} & \textbf{92.6} & 84.7 & \textbf{93.4} \\
+% \textbf{SFC (Descendant Weight)} & \textbf{50.1} & \textbf{91.7} & 48.9 & \textbf{93.2} & \textbf{82.4} & \textbf{93.8} & \textbf{85.3} & \textbf{94.1} \\
+% \hline
+% \end{tabular}
+% \end{table*}
+
+
+
+
+\section{A New Notion of Factuality: Absolute-Coherent-Factuality}
+
+We build the theory from the simplest case upward.
+Let $X\!\in\!\mathcal{X}$ be a scientific query,
+$Y\!\in\!\mathcal{Y}$ an LLM output,
+$S:\mathcal{Y}\!\to\!2^{\mathcal{F}}$ the fact-option
+splitter, and $\mathcal{T}\!\subseteq\!\mathcal{F}$ the
+scientific ground truth
+(Definition~\ref{def:ground-truth}).
+Write $[n]=\{1,\dots,n\}$.
+
+\paragraph{A single claim.}
+The model outputs one statement $f$; we verify
+$f\models\mathcal{T}$ by checking
+$KE=\tfrac{1}{2}mv^{2}$:
+$\tfrac{1}{2}\!\cdot\!2\!\cdot\!3^{2}=9$.
+This is \emph{independent factuality}---each $f$ is a
+separate die roll.
+
+\paragraph{Where independence fails.}
+Let $f_{1}$: ``Energy is not conserved'' and
+$f_{2}$: ``Hence $KE_{\text{final}}>KE_{\text{init}}$
+without work.''
+Then $f_{1}\vdash f_{2}$ yet
+$f_{1}\not\models\mathcal{T}$,
+$f_{2}\not\models\mathcal{T}$.
+Any checker treating $f_{1},f_{2}$ independently either
+accepts both (coherent but false) or orphans~$f_{2}$.
+\emph{Claims in scientific reasoning are links in a chain,
+not rolls of separate dice.}
+
+% ============================================================
+\subsection{Three Levels and Their Formal Characterization}
+% ============================================================
+
+We define three increasingly strict predicates on ordered
+sequences $\bm{f}=(f_{1},\dots,f_{n})\in\mathcal{F}^{n}$.
+
+\begin{definition}[Independent Factuality; Level~0]
+\label{def:indep-fact}
+$\bm{f}$ is \emph{independently factual} if
+\begin{equation}\label{eq:level0}
+  \operatorname{IF}(\bm{f})
+  \;:=\;
+  \bigwedge_{i=1}^{n}
+  \bigl[\,\mathcal{T}\Rightarrow f_{i}\,\bigr].
+\end{equation}
+\end{definition}
+
+\begin{definition}[Coherent Factuality; Level~1]
+\label{def:coh-fact}
+$\bm{f}$ is \emph{coherently factual} if
+\begin{equation}\label{eq:level1}
+  \operatorname{CF}(\bm{f})
+  \;:=\;
+  \bigwedge_{i=1}^{n}
+  \bigl[\,f_{i}\text{ deducible from }
+  \bm{f}_{<i},\,X\,\bigr],
+\end{equation}
+where $\bm{f}_{<i}:=(f_{1},\dots,f_{i-1})$.
+\end{definition}
+
+\begin{definition}[Absolute-Coherent-Factuality; Level~2]
+\label{def:absolute-coherent-factuality}
+$\bm{f}$ is \emph{absolute-coherent-factual} (ACF) if
+\begin{equation}\label{eq:acf}
+  \operatorname{ACF}(\bm{f})
+  \;:=\;
+  \bigwedge_{i=1}^{n}
+  \Bigl[
+    \underbrace{f_{i}\models\mathcal{T}}_{\text{absolute}}
+    \;\wedge\;
+    \underbrace{
+      f_{i}\!\leftarrow\!
+      (\bm{f}_{<i},X,\mathcal{T})
+    }_{\text{coherent}}
+  \Bigr],
+\end{equation}
+where $f_{i}\!\leftarrow\!(\bm{f}_{<i},X,\mathcal{T})$
+denotes deducibility of~$f_{i}$ from its prefix, the
+query, and the ground truth.
+\end{definition}
+
+The logical relationships are immediate:
+
+\begin{proposition}[Strict Hierarchy]
+\label{prop:hierarchy}
+For any $\bm{f}\in\mathcal{F}^{n}$,
+\begin{equation}\label{eq:hierarchy}
+  \operatorname{ACF}(\bm{f})
+  \;\Longrightarrow\;
+  \operatorname{IF}(\bm{f})
+  \;\wedge\;
+  \operatorname{CF}(\bm{f}),
+\end{equation}
+but neither $\operatorname{IF}$ nor $\operatorname{CF}$
+alone implies $\operatorname{ACF}$.
+\end{proposition}
+
+\begin{proof}
+The forward implication follows by projecting
+\eqref{eq:acf} onto each conjunct.  For the converse,
+the pair $(f_{1}',f_{2})$ in the opening example
+satisfies $\operatorname{CF}$ but not
+$\operatorname{IF}$; swapping $f_{1}'$ for a true but
+irrelevant claim yields $\operatorname{IF}$ but not
+$\operatorname{CF}$.
+\end{proof}
+
+\begin{observation}[Prefix Closure]
+\label{obs:prefix}
+$\operatorname{ACF}(f_{1},\dots,f_{n})$ implies
+$\operatorname{ACF}(f_{1},\dots,f_{k})$ for all $k<n$.
+\end{observation}
+
+\noindent
+\emph{Proof.}
+Each conjunct in~\eqref{eq:acf} for $i\le k$ depends
+only on $\bm{f}_{<i}\subseteq\bm{f}_{<k+1}$.
+\hfill$\square$
+
+\medskip
+Define the \emph{maximal valid prefix length}:
+\begin{equation}\label{eq:mvp}
+  \ell^{*}(\bm{f})
+  \;:=\;
+  \max\bigl\{\,k\in\{0\}\cup[n]
+  :\operatorname{ACF}(\bm{f}_{<k+1})\bigr\}.
+\end{equation}
+By Observation~\ref{obs:prefix}, $\ell^{*}$ is well-defined
+and equals the index of the first violation minus one
+(or~$n$ if no violation exists).
+
+\begin{lemma}[Cascade Prevention]
+\label{lem:cascade}
+Let $\ell=\ell^{*}(\bm{f})$.
+If $\ell<n$, then for every $j>\ell$,
+\begin{equation}\label{eq:cascade}
+  f_{j}\models\mathcal{T}
+  \;\not\!\!\Longrightarrow\;
+  \operatorname{ACF}(f_{1},\dots,f_{j}).
+\end{equation}
+That is, no individual correctness of later claims can
+rescue a broken prefix.
+\end{lemma}
+
+\begin{proof}
+$\operatorname{ACF}(f_{1},\dots,f_{j})$ requires
+$\operatorname{ACF}(f_{1},\dots,f_{\ell+1})$ by
+Observation~\ref{obs:prefix}.  But $f_{\ell+1}$ fails
+the ACF conjunct by definition of~$\ell^{*}$.
+\end{proof}
+
+\paragraph{Worked example.}
+Query $X$: ``$2\,$kg block, frictionless incline,
+$h=5\,$m.  Find speed at bottom.''
+\begin{alignat}{2}
+  f_{1}&: &\quad mgh &= \tfrac{1}{2}mv^{2}
+  \label{eq:ex-f1}\\[2pt]
+  f_{2}&: &\quad 2\!\cdot\!9.8\!\cdot\!5
+  &= \tfrac{1}{2}\!\cdot\!2\!\cdot\!v^{2}
+  \label{eq:ex-f2}\\[2pt]
+  f_{3}&: &\quad v^{2}=98,\;\;
+  v&=\sqrt{98}\approx 9.9\;\text{m/s}
+  \label{eq:ex-f3}
+\end{alignat}
+Verification:
+\begin{align}
+  f_{1}\models\mathcal{T}&:\;
+  \text{energy conservation}
+  \;\checkmark
+  \nonumber\\
+  f_{1}\!\leftarrow\!(X,\mathcal{T})&:\;
+  \text{frictionless}\!\Rightarrow\!\text{no dissipation}
+  \;\checkmark
+  \label{eq:ex-check1}\\[3pt]
+  f_{2}\models\mathcal{T}&:\;
+  \text{substitution correct}
+  \;\checkmark
+  \nonumber\\
+  f_{2}\!\leftarrow\!(f_{1},X,\mathcal{T})&:\;
+  \text{values from }X\text{ into }
+  \eqref{eq:ex-f1}
+  \;\checkmark
+  \label{eq:ex-check2}\\[3pt]
+  f_{3}\models\mathcal{T}&:\;
+  98=v^{2}\;\checkmark
+  \nonumber\\
+  f_{3}\!\leftarrow\!(f_{1},f_{2},X,\mathcal{T})&:\;
+  \text{algebra from }\eqref{eq:ex-f2}
+  \;\checkmark
+  \label{eq:ex-check3}
+\end{align}
+Hence $\operatorname{ACF}(f_{1},f_{2},f_{3})$ holds
+and $\ell^{*}=3$.
+Replacing~\eqref{eq:ex-f1} with
+$f_{1}':\;\tfrac{1}{2}mv^{2}=2mgh$ gives
+$f_{1}'\not\models\mathcal{T}$, so $\ell^{*}=0$;
+Lemma~\ref{lem:cascade} blocks all descendants.
+
+% ============================================================
+\subsection{Deducibility Graphs and Their Properties}
+% ============================================================
+
+We represent logical dependencies as a DAG.
+
+\begin{assumption}[Monotone Deducibility]
+\label{ass:superstring}
+Fix $(X,\mathcal{T},f_{n})$.  If
+$f_{n}\!\leftarrow\!(Y_{\mathrm{sub}},X,\mathcal{T})$
+for some ordering $Y_{\mathrm{sub}}$ of
+$\{f_{1},\dots,f_{n-1}\}$, and $Y_{\mathrm{sup}}$ is an
+ACF ordering on a superset
+$S\supseteq\{f_{1},\dots,f_{n-1}\}$, then
+\begin{equation}\label{eq:monotone}
+  f_{n}\!\leftarrow\!
+  (Y_{\mathrm{sup}},X,\mathcal{T}).
+\end{equation}
+\end{assumption}
+
+\begin{definition}[Ideal Deducibility Graph]
+\label{def:ideal-graph}
+For $(X,Y),\mathcal{T}$, define DAG
+$G^{*}\!=\!(V^{*}\!,E^{*})$ with
+$V^{*}\!:=S(Y)\cup\{v_{\top}\}$, where $v_{\top}$
+represents $\mathcal{T}\wedge X$.  Edges are constructed
+layer by layer:
+\begin{equation}\label{eq:ideal-layers}
+\begin{aligned}
+  L_{0}&=\{v_{\top}\},\\
+  L_{k+1}&=\bigl\{f\!\in\!V^{*}\!\setminus\!
+  \textstyle\bigcup_{j\le k}L_{j}:
+  f\!\leftarrow\!(L_{\le k},X,\mathcal{T})\bigr\},
+\end{aligned}
+\end{equation}
+with $(u,f)\!\in\!E^{*}$ iff $u\!\in\!L_{k}$,
+$f\!\in\!L_{k+1}$, and $u$ participates in the deduction
+of~$f$.
+\end{definition}
+
+\begin{definition}[Approximate Deducibility Graph]
+\label{def:approximate-graph}
+A DAG $G\!=\!(V,E)$ with $V\!=\!S(Y)$ is an
+\emph{approximate deducibility graph} for
+$(X,Y),\mathcal{T}$ if $E$ satisfies:
+
+\noindent
+\textbf{(A1) Ancestor connectivity.}
+For any ancestor-closed $V'\!\subseteq\!V$,
+\begin{equation}\label{eq:a1}
+  \exists\;\text{ACF ord.\ of }V'
+  \;\Longrightarrow\;
+  \forall\;\pi\in\operatorname{Topo}(G[V']),\;
+  \operatorname{ACF}(\pi).
+\end{equation}
+
+\noindent
+\textbf{(A2) Consistency.}
+\begin{equation}\label{eq:a2}
+  \nexists\;\text{ACF ord.\ of }V'
+  \;\Longrightarrow\;
+  \forall\;V''\!\supseteq\!V',\;
+  \nexists\;\text{ACF ord.\ of }V''.
+\end{equation}
+\end{definition}
+
+\begin{observation}[Realizability]
+\label{obs:realizability}
+$G^{*}[V^{*}\!\setminus\!\{v_{\top}\}]$ satisfies
+(A1) and~(A2).  Hence an approximate deducibility graph
+always exists.
+\end{observation}
+
+\begin{proposition}[Minimality]
+\label{prop:minimality}
+Among all approximate graphs for a given
+$(X,Y),\mathcal{T}$,
+$G^{*}[V^{*}\!\setminus\!\{v_{\top}\}]$ has the
+minimum edge count:
+\begin{equation}\label{eq:edge-bound}
+  |E^{*}[V^{*}\!\setminus\!\{v_{\top}\}]|
+  \;\le\;|E|
+  \;\le\;\tbinom{n}{2}.
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+By Assumption~\ref{ass:superstring}, adding edges
+to an approximate graph preserves (A1)--(A2); removing
+edges from the ideal-induced graph may violate~(A1).
+\end{proof}
+
+\begin{lemma}[Subgraph Filtering Safety]
+\label{lem:subgraph-safety}
+Let $G=(V,E)$ be an approximate deducibility graph.
+For threshold~$\tau$, define the retained set
+\begin{equation}\label{eq:retained}
+  V_{\tau}:=\bigl\{v\!\in\!V:
+  \sigma(v)\le\tau,\;
+  \operatorname{Anc}(v)\!\subseteq\!V_{\tau}
+  \bigr\},
+\end{equation}
+where $\operatorname{Anc}(v)$ denotes ancestors of~$v$
+in~$G$.  If an ACF ordering of~$V_{\tau}$ exists, then
+every $\pi\in\operatorname{Topo}(G[V_{\tau}])$ is ACF.
+\end{lemma}
+
+\begin{proof}
+$V_{\tau}$ is ancestor-closed by construction.
+Apply~(A1).
+\end{proof}
+
+\begin{lemma}[Contamination Monotonicity]
+\label{lem:contamination}
+If $V_{\tau}$ admits no ACF ordering, then
+\begin{equation}\label{eq:contam}
+  \forall\;V'\supseteq V_{\tau},\quad
+  \nexists\;\text{ACF ordering of }V'.
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Direct from~(A2).
+\end{proof}
+
+% ============================================================
+\subsection{Composite Scoring and Conformal Interface}
+% ============================================================
+
+We equip each node with a nonconformity score.
+Let $\mathcal{C}_{i-1}=\{f_{1},\dots,f_{i-1}\}$.
+
+\paragraph{Tier~1 (symbolic).}
+\begin{equation}\label{eq:hard}
+  \sigma_{\mathrm{hard}}(f_{i})
+  = \max\!\bigl\{
+    \sigma_{\mathrm{dim}}(f_{i}),\;
+    \sigma_{\mathrm{cons}}(f_{i}),\;
+    \sigma_{\mathrm{arith}}(f_{i})
+  \bigr\},
+\end{equation}
+where $\sigma_{\mathrm{dim}}$, $\sigma_{\mathrm{cons}}$,
+$\sigma_{\mathrm{arith}}$ check dimensional consistency,
+conservation laws, and arithmetic, respectively.
+
+\paragraph{Tier~2 (neural).}
+\begin{equation}\label{eq:soft}
+  \sigma_{\mathrm{soft}}(f_{i})
+  = 1-p_{\theta}
+  \bigl(f_{i}\mid \mathcal{C}_{i-1},X\bigr),
+\end{equation}
+where $p_{\theta}$ is a Platt-calibrated entailment model.
+
+\paragraph{Tier~3 (domain).}
+For domain $d\in\mathcal{D}$,
+\begin{equation}\label{eq:cross}
+  \sigma_{\mathrm{cross}}^{(d)}(f_{i})
+  = 1 - \min\!\bigl\{
+    C_{d}(f_{i}),\;
+    D_{d}(f_{i}),\;
+    R_{d}(f_{i})
+  \bigr\},
+\end{equation}
+where $C_{d},D_{d},R_{d}\!:\mathcal{F}\to[0,1]$ are
+domain-specific conservation, derivation, and reasoning
+checkers.
+
+\paragraph{Composite score.}
+\begin{equation}\label{eq:composite}
+\boxed{\;
+  \sigma(f_{i}\mid\mathcal{C}_{i-1})
+  \;=\;
+  \max\!\bigl\{
+    \sigma_{\mathrm{hard}},\;
+    \beta\,\sigma_{\mathrm{soft}},\;
+    \gamma\,\sigma_{\mathrm{cross}}^{(d)}
+  \bigr\}
+\;}
+\end{equation}
+with $\beta,\gamma\!\in\!(0,1]$ set by grid search
+(Appendix~\ref{app:deducibility-computation}).
+The~$\max$ ensures any single strong objection flags a
+violation (Cohen's $\kappa>0.7$ with PhD annotators).
+
+\paragraph{Graph-level nonconformity.}
+Given approximate graph $G=(V,E)$ with node scores
+$\{\sigma(v)\}_{v\in V}$, define
+\begin{equation}\label{eq:subgraph-family}
+  \mathcal{S}_{\tau}(G)
+  :=\bigl\{V'\!\subseteq\!V:
+  V'\text{ anc.-closed},\;
+  \max_{v\in V'}\sigma(v)\le\tau
+  \bigr\}
+\end{equation}
+and the graph-level nonconformity
+\begin{equation}\label{eq:graph-nc}
+  r(X,Y,G)
+  :=\inf\bigl\{\tau\!\ge\!0:
+  \mathcal{S}_{\tau}(G)\neq\emptyset,\;
+  V_{\tau}\text{ is ACF}\bigr\}.
+\end{equation}
+
+\begin{proposition}[Conformal Interface]
+\label{prop:conformal-interface}
+Let $\hat{q}_{\alpha}$ be the
+$\lceil(n\!+\!1)(1\!-\!\alpha)\rceil$-th smallest
+calibration score.  The filtered output
+$\bm{f}^{\hat{q}_{\alpha}}$ (retaining
+$V_{\hat{q}_{\alpha}}$ in topological order)
+satisfies
+\begin{equation}\label{eq:coverage}
+  1\!-\!\alpha
+  \;\le\;
+  P\!\bigl[
+    \operatorname{ACF}\bigl(
+    \bm{f}^{\hat{q}_{\alpha}}_{n+1}\bigr)
+  \bigr]
+  \;\le\;
+  1\!-\!\alpha+\tfrac{1}{n\!+\!1},
+\end{equation}
+provided $(X_{i},Y_{i})_{i=1}^{n+1}$ are exchangeable
+and each $G_{i}=\mathcal{G}(X_{i},Y_{i})$ for a fixed
+deterministic~$\mathcal{G}$.
+\end{proposition}
+
+\begin{proof}[Proof sketch]
+$\mathcal{G}$ deterministic $\Rightarrow$
+$(X_{i},Y_{i},G_{i})$ exchangeable.
+Lemma~\ref{lem:subgraph-safety} converts the score
+event $\{r\le\hat{q}_{\alpha}\}$ into the ACF event.
+Standard split conformal theory
+yields~\eqref{eq:coverage}.
+Full proof: Appendix~\ref{app:exchangeability-proof}.
+\end{proof}
+
+\begin{remark}
+Equation~\eqref{eq:coverage} is the central guarantee:
+with probability $\ge 1\!-\!\alpha$, the pipeline output
+is absolute-coherent-factual.
+\end{remark}
+
+
+
+\section{Scientific Feasibility Control Algorithm}
+
+Building on the theoretical framework, we present Scientific Feasibility Control (SFC), a practical algorithm that combines progressive generation with graph-structured conformal prediction to ensure scientific validity while preserving reasoning coherence. Our approach addresses the key challenge: how to maintain scientific rigor during generation while providing formal statistical guarantees.
+\begin{algorithm}[!t]
+\small
+\caption{Progressive Scientific Generation with Validation}
+\label{alg:progressive}
+\begin{algorithmic}[1]
+\STATE \textbf{Input:} Problem data $P$, scientific context $\mathcal{C}$, threshold $\tau$, max iterations $M$
+\STATE \textbf{Output:} Scientifically valid response $R$, validation statistics $S$
+\STATE Initialize $\text{verified\_context} \leftarrow \emptyset$, $\text{response} \leftarrow \emptyset$, $\text{attempts} \leftarrow 1$
+\WHILE{$\text{attempts} \leq M$}
+    \STATE $\text{solution} \leftarrow \text{GenerateInitialSolution}(P,\text{verified\_context})$
+    \STATE $\text{sentences} \leftarrow \text{SplitIntoSentences}(\text{solution})$
+    \STATE $\text{valid\_sentences} \leftarrow \emptyset$, $\text{found\_invalid} \leftarrow \text{false}$
+    \FOR{$i \leftarrow 1$ to $|\text{sentences}|$}
+        \STATE $\text{sentence} \leftarrow \text{sentences}[i]$
+        \STATE $\text{physics} \leftarrow \text{ExtractPhysicsContext}(P,\mathcal{C})$
+        \STATE $\text{validation} \leftarrow \text{ValidateSentence}(\text{sentence})$
+        \IF{$\text{validation.risk\_score} \leq \tau$}
+            \STATE $\text{valid\_sentences} \leftarrow \text{valid\_sentences} \cup \{\text{sentence}\}$
+            \STATE $\text{verified\_context} \leftarrow \text{verified\_context} \cup \{\text{sentence}\}$
+        \ELSE
+            \STATE $\text{found\_invalid} \leftarrow \text{true}$
+            \STATE \textbf{break} \COMMENT{Halt validation to prevent cascade errors}
+        \ENDIF
+    \ENDFOR
+    \IF{$\neg \text{found\_invalid}$}
+        \RETURN $\text{BuildResponse}(\text{valid\_sentences})$
+    \ENDIF
+    \IF{$\text{attempts} < M$}
+        \STATE $\text{verified\_context} \leftarrow \text{RegenerateFromContext}(P,\text{valid\_sentences})$
+        \STATE $\text{attempts} \leftarrow \text{attempts} + 1$
+    \ENDIF
+\ENDWHILE
+\RETURN $(\text{BuildResponse}(\text{valid\_sentences}), \text{GetStatistics}())$
+\end{algorithmic}
+\end{algorithm}
+\vspace{-0.5\baselineskip}
+\subsection{Progressive Generation with Real-Time Validation}
+\vspace{-0.5\baselineskip}
+Unlike post-hoc filtering approaches, SFC operates through progressive generation where each absolute-coherent-factuality unit undergoes real-time scientific validation. As unit $f_i$ is generated, specialized validators assess scientific feasibility given accumulated context $\{f_1, \ldots, f_{i-1}\}$, computing scientific feasibility score $\sigma(f_i | \text{context}) \in [0,1]$ where higher values indicate greater violation risk.
+
+\textbf{Progressive Algorithm Overview}: The progressive algorithm maintains verified context $\mathcal{C}$ and output sequence $Y$. For each generation step, the system first generates candidate unit $f_i \sim p(f_i | x, \mathcal{C})$, then computes feasibility score $\sigma(f_i | \mathcal{C})$ using multi-modal validation. If $\sigma(f_i | \mathcal{C}) \leq \tau$, the system accepts and updates $Y \leftarrow Y \cup \{f_i\}, \mathcal{C} \leftarrow \mathcal{C} \cup \{f_i\}$, otherwise triggers dynamic branching to alternative generation paths.
+
+\subsection{Multi-Modal Scientific Validation}
+
+Scientific feasibility assessment combines three validation mechanisms designed to capture different aspects of scientific validity.
+
+\textbf{Hard constraint validation} uses rule-based verification of fundamental laws (conservation principles, thermodynamic constraints, dimensional analysis) with zero tolerance. \textbf{Soft semantic assessment} employs neural models to evaluate logical consistency and experimental feasibility. \textbf{Cross-modal coherence} validates consistency between textual descriptions and mathematical/visual representations.
+
+The composite score combines assessments: 
+$$\sigma(f_i | \mathcal{C}) = \max\{\sigma_{\text{hard}}(f_i), \beta \cdot \sigma_{\text{soft}}(f_i), \gamma \cdot \sigma_{\text{cross}}(f_i)\}$$
+with domain-adaptive weights $\beta, \gamma$.
+\begin{algorithm} \caption{Scientific Sentence Validation} \label{alg:validation} \begin{algorithmic}[1] \STATE \textbf{Input:} Sentence $s$, physics context $\Phi$, weights $(\beta, \gamma)$ \STATE \textbf{Output:} Validation result with risk score $\sigma(s|\Phi)$ \STATE \COMMENT{Hard constraint validation} \STATE $\sigma_{\text{hard}} \leftarrow 0$ \FOR{\textbf{each} $(pattern, error\_type)$ in $violation\_patterns$} \IF{$\text{MatchesPattern}(s, pattern)$} \STATE $\sigma_{\text{hard}} \leftarrow 0.95$ \COMMENT{High risk for obvious violations} \STATE \textbf{break} \ENDIF \ENDFOR \STATE \COMMENT{Semantic assessment via LLM} \STATE $prompt \leftarrow \text{BuildValidationPrompt}(s, \Phi)$ \STATE $llm\_response \leftarrow \text{LLMCall}(prompt, temperature=0.05)$ \STATE $\sigma_{\text{soft}} \leftarrow \text{ExtractConfidenceScore}(llm\_response)$ \STATE $error\_type \leftarrow \text{ExtractErrorType}(llm\_response)$ \STATE \COMMENT{Cross-modal consistency} \STATE $\sigma_{\text{cross}} \leftarrow \text{ValidateCrossModalConsistency}(s, \Phi)$ \STATE \COMMENT{Composite risk score} \STATE $\sigma_{\text{composite}} \leftarrow \max(\sigma_{\text{hard}}, \beta \times \sigma_{\text{soft}}, \gamma \times \sigma_{\text{cross}})$ \RETURN $\text{ValidationResult}(s, \sigma_{\text{composite}} \leq threshold, \sigma_{\text{composite}}, error\_type)$ \end{algorithmic} \end{algorithm}
+       
+\begin{table*}[ht]
+\centering
+
+\small
+\caption{Ablation study showing individual and combined component contributions. Progressive validation provides the largest accuracy improvement, while scientific validation maximally improves validity. Full SFC achieves optimal balance with acceptable computational overhead.}
+\label{tab:ablation}
+\begin{tabular}{l|cc|cc|cc|c}
+\hline
+\multirow{2}{*}{Configuration} & \multicolumn{2}{c|}{PhyX} & \multicolumn{2}{c|}{MATH} & \multicolumn{2}{c|}{ScienceQA} & Computational \\
+& Acc. & Valid. & Acc. & Valid. & Acc. & Valid. & Overhead \\
+\hline
+Baseline (No SFC) & 45.8 & 76.8 & 42.3 & 81.2 & 78.6 & 85.1 & 1.0× \\
++ Progressive Validation Only & 51.8 & 82.4 & 45.7 & 84.6 & 80.2 & 87.8 & 2.1× \\
++ Graph Structure Only & 49.2 & 81.1 & 46.1 & 85.3 & 79.9 & 88.2 & 1.4× \\
++ Scientific Validation Only & 47.7 & 89.3 & 43.8 & 90.1 & 80.4 & 91.5 & 1.8× \\
++ Progressive + Graph & 52.4 & 87.6 & 48.1 & 89.7 & 81.5 & 91.2 & 2.8× \\
++ Progressive + Scientific & 53.1 & 92.1 & 47.2 & 92.8 & 81.8 & 93.4 & 3.1× \\
++ Graph + Scientific & 48.9 & 90.7 & 47.8 & 91.5 & 81.2 & 92.6 & 2.9× \\
+\hline
+\textbf{SFC (All Components)} & \textbf{50.1} & \textbf{91.7} & 47.9 & \textbf{93.2} & 81.4 & \textbf{93.8} & \textbf{2.3×} \\
+\hline
+\end{tabular}
+\end{table*}
+
+\subsection{Dynamic Graph-Structured Conformal Calibration}
+
+Our key innovation lies in extending conformal prediction to handle dynamically evolving dependency structures during generation. Unlike static graph approaches that require pre-constructed dependency graphs, or linear sequence methods that ignore complex relationships, SFC performs conformal calibration over dynamically constructed graph structures that capture the true complexity of scientific reasoning. 
+
+% Figure~\ref{fig:claims_retained} illustrates the trade-off between fact-option retention rate and scientific validity across different filtering strategies for physics reasoning. In particular, the “linear dependency graph” represents a static, sequence-like baseline that ignores branching or cross-claim dependencies, highlighting the advantage of our dynamically constructed scientific dependency graphs.}
+
+\textbf{Dynamic Dependency Discovery}: At each generation step, we identify potential dependencies through multi-modal analysis:
+
+
+\textbf{Graph-Structured Conformal Prediction}: We extend conformal prediction to handle dynamic graphs through novel candidate subgraph generation:
+\begin{algorithm}
+\caption{Scientific Sentence Validation}
+\label{alg:validation}
+\begin{algorithmic}[1]
+\STATE \textbf{Input:} Sentence $s$, physics context $\Phi$, weights $(\beta, \gamma)$
+\STATE \textbf{Output:} Validation result with risk score $\sigma(s|\Phi)$
+\STATE \COMMENT{Hard constraint validation}
+\STATE $\sigma_{\text{hard}} \leftarrow 0$
+\FOR{\textbf{each} $(pattern, error\_type)$ in $violation\_patterns$}
+    \IF{$\text{MatchesPattern}(s, pattern)$}
+        \STATE $\sigma_{\text{hard}} \leftarrow 0.95$ \COMMENT{High risk for obvious violations}
+        \STATE \textbf{break}
+    \ENDIF
+\ENDFOR
+\STATE \COMMENT{Semantic assessment via LLM}
+\STATE $prompt \leftarrow \text{BuildValidationPrompt}(s, \Phi)$
+\STATE $llm\_response \leftarrow \text{LLMCall}(prompt, temperature=0.05)$
+\STATE $\sigma_{\text{soft}} \leftarrow \text{ExtractConfidenceScore}(llm\_response)$
+\STATE $error\_type \leftarrow \text{ExtractErrorType}(llm\_response)$
+\STATE \COMMENT{Cross-modal consistency}
+\STATE $\sigma_{\text{cross}} \leftarrow \text{ValidateCrossModalConsistency}(s, \Phi)$
+\STATE \COMMENT{Composite risk score}
+\STATE $\sigma_{\text{composite}} \leftarrow \max(\sigma_{\text{hard}}, \beta \times \sigma_{\text{soft}}, \gamma \times \sigma_{\text{cross}})$
+\RETURN $\text{ValidationResult}(s, \sigma_{\text{composite}} \leq threshold, \sigma_{\text{composite}}, error\_type)$
+\end{algorithmic}
+\end{algorithm}
+
+Our dynamic approach handles three critical dependency patterns absent in simpler methods:
+
+\textbf{Parallel Convergence}: Multiple independent lines of evidence supporting a single conclusion (e.g., experimental results + theoretical derivation → scientific law)
+
+\textbf{Cross-Validation Networks}: Bidirectional consistency checks between related claims (e.g., conservation laws mutually constraining each other)
+
+\textbf{Hierarchical Abstraction}: Claims at different levels of abstraction with complex support relationships (e.g., specific experimental observations → general principles → theoretical predictions)
+
+\textbf{Theoretical Guarantee for Dynamic Graphs}: Our approach maintains conformal coverage guarantees even as graphs evolve:
+
+\begin{theorem}[Dynamic Graph Conformal Coverage]
+\label{thm:dynamic-coverage}
+For any $\alpha \in (0,1)$ and calibration set $\{(X_i, Y_i, G_i)\}_{i=1}^n$ where $G_i$ represents the final dynamic graph for example $i$, the dynamic graph-structured conformal predictor satisfies:
+\begin{align}
+P[\text{Selected subgraph is absolute-}\nonumber\\
+\text{coherent-factual}] \geq 1-\alpha
+\end{align}
+regardless of the specific dynamic construction process.
+\end{theorem}
+
+\begin{proof}[Proof Sketch]
+The key insight is that $G(X,Y)$ is a deterministic function of $(X,Y)$. Since $(X_1,Y_1),\ldots,(X_{n+1},Y_{n+1})$ are exchangeable, and deterministic functions preserve exchangeability, the augmented tuples $(X_i,Y_i,G(X_i,Y_i))$ maintain exchangeability. Complete formal proof provided in Appendix~\ref{app:exchangeability-proof}.
+\end{proof}
+\subsection{Dynamic Branching and Error Recovery}
+
+When scientific violations are detected ($\sigma(f_i | \mathcal{C}) > \tau$), SFC employs dynamic branching rather than simple rejection. The system uses verified context $\mathcal{C}$ as foundation for alternative generation: ``Given the established scientific context, generate the next logical step that maintains scientific validity.'' This approach enables graceful error recovery while preserving reasoning coherence.
+
+\textbf{Branching Strategy}: Upon detecting a violation, the system preserves the verified context $\mathcal{C}$ as immutable foundation, generates alternative continuations using context-aware prompting, validates alternative paths through the same multi-modal assessment, and selects the path with highest feasibility score above threshold $\tau$.
+
+% \subsection{Domain-Adaptive Implementation}
+
+% Scientific domains exhibit distinct error patterns requiring specialized treatment. For each domain $d \in \{\text{physics}, \text{chemistry}, \text{mathematics}\}$, we maintain independent calibration sets and domain-specific quantiles $\hat{q}_{\alpha,d}$. Input classification uses domain keywords with conservative defaults for ambiguous queries.
+
+% The framework operates as a plug-and-play module compatible with any language model, requiring no parameter access or architectural modifications. Computational overhead scales linearly with response length, dominated by validation rather than conformal computation. This design enables reliable scientific text generation with formal guarantees while maintaining practical deployability across diverse scientific applications.
+
+
+
+\subsection{Domain-Adaptive Implementation}
+
+We address exhibit distinct errorthrough a principled separation of concerns that maintains the integrity of our Scientific Feasibility Control framework.
+
+\begin{assumption}[Domain Classification Independence]
+\label{ass:domain-independence}
+Domain classification $\delta: \mathcal{X} \rightarrow \mathcal{D}$ operates through lexical pattern matching and keyword frequency analysis, making it independent of content validity assessment, where $\mathcal{D} = \{\text{physics}, \text{chemistry}, \text{mathematics}\}$.
+\end{assumption}
+
+For each domain $d \in \mathcal{D}$, we maintain independent calibration sets $\mathcal{C}_d = \{(X_i, Y_i)\}_{i \in I_d}$ and domain-specific quantiles $\hat{q}_{\alpha,d}$, where $I_d = \{i : \delta(X_i) = d\}$ represents the index set for domain $d$.
+
+\textbf{Domain-specific conformal guarantee}: For SFC across domains, the conformal prediction framework ensures:
+\begin{equation}
+P\left[\frac{1}{|I_d|}\sum_{i \in I_d} \mathbf{1}[r(X_i,Y_i) \leq \hat{q}_{\alpha,d}] \geq 1-\alpha\right] \geq 1-\alpha
+\end{equation}
+
+where the non-conformity score $r(X,Y)$ is computed using doma
+-in-adapted validation thresholds but domain classification remains orthogonal to validity assessment through our three-tier architecture.
+
+\textbf{Resolving neural-symbolic circularity in SFC}: Our progressive generation framework employs a hierarchical validation architecture that eliminates circular dependencies while maintaining real-time feasibility assessment in Appendix~\ref{app:domain-adaptive} and Appendix~\ref{app:circular-resolution}.
+\begin{table}[ht]
+\centering
+\caption{Domain-specific performance on PhyX physics problems showing consistent validity enhancement across scientific subfields.}
+\label{tab:phyx_domains}
+\begin{tabular}{l|cc}
+\hline
+Physics Domain & Accuracy & Validity \\
+\hline
+Mechanics & 54.4 & 93.1  \\
+Electromagnetism & 53.8 & 91.8  \\
+Thermodynamics & 47.8 & 89.4  \\
+Optics & 49.2 & 92.6  \\
+Wave \& Acoustics & 48.9 & 90.3  \\
+Modern Physics & 46.2 & 89.7  \\
+\hline
+\textbf{Overall} & \textbf{50.1} & \textbf{91.2}  \\
+\hline
+\end{tabular}
+\end{table}
+
+
+\section{Experiments and Main Results}
+\textbf{Datasets.} Our experiments utilize four established scientific reasoning benchmarks to validate the theoretical guarantees and practical effectiveness of Scientific Feasibility Control. We evaluate on PhyX (multimodal physics problems requiring causal and visual reasoning, \citet{shen2025phyx}), MATH (\citet{hendrycksmath2021}), ScienceQA (\citet{lu2022learn}), and ARC Challenge (\citet{allenai:arc}), which collectively span physics, mathematics, and general scientific knowledge domains. These benchmarks are among the standard evaluations reported in recent model releases, on which even frontier reasoning models demonstrate significant error rates. For each dataset, we construct approximate deducibility graphs using Claude-4 with few-shot prompting and apply our progressive generation pipeline with domain-specific validators. We compare against independent conformal prediction baselines, post-hoc filtering approaches, and state-of-the-art reasoning models including DeepSeek-R1-0528, OpenAI o3-mini, and Grok-3, with additional comparisons to science-focused models such as Galactica. Annotations were conducted by physics PhDs with inter-annotator agreement $\kappa = 0.82$, and statistical significance was assessed via paired t-tests with Bonferroni correction, with detailed ablation studies provided in Appendix ~\ref{app:mohri_details}.
+
+
+\textbf{Sequential Scientific Generator.} The generator operates throu
+-gh fact-option-level struct.Our system combines rapid error detection through regex for common violations (e.g., conservation laws, thermodynamic constraints) with neural assessment. We achieve results using Doubao as the base model. To enhance scientific reasoning, it establishes the framework's broad applicability rather than dependence on specific architectural advantages. We compare against six established approaches: (1) GPT-4 baseline without enhancement, (2)  Claude-3, (3) Independent conformal prediction \cite{mohri2024language}, and (4) Post-hoc filtering without progressive validation. 
+
+\textbf{Dynamic Graph Construction.} For dependency modeling, we employ template-based dynamic construction where graphs $G = (V,E)$ evolve incrementally during generation. Vertices represent fact-options and edges capture logical dependencies discovered through deterministic pattern matching. Our template library ensures acyclic structures by design, with dependency discovery achieving 94\% consistency across equivalent inputs. The resulting graphs satisfy Definition~\ref{def:approximate-graph} through process invariance, with error propagation analysis showing 73\% of invalid claims correctly isolated from valid reasoning chains.
+
+\textbf{Results.} We directly compare the results of our  SFC's efforts through three key dimensions: accuracy improvement, scientific validity enhancement, and conformal coverage guarantees.
+
+\textbf{[R1]} The main results presents across four scientific reasoning benchmarks. SFC with descendant weighting gets 50.1\% accuracy on PhyX physics reasoning, better than GPT-4 baseline (45.8\%), and o3 (48.2\%). Simultaneously, scientific validity reaches 91.7\%—an improvement over baseline approaches that achieve 76-82\% validity.We attempted to generate deducibility graphs for the FActScore biography-generation dataset; however, we found these graphs to be nonsensical and to contain cycles as responses to such prompts do not carry any inherent, directed structure. Our prompts can be found in Appendix~\ref{app:api-usage}, and results of these experiments with Llama-3 can be found in Appendix~\ref{app:costs}.
+
+
+
+\textbf{[R2] Dynamic Branching Effectiveness.} Our progressive validation mechanism triggers dynamic branching, resulting in an average of 2.16 generation attempts and 16.36 validation attempts per problem. This intensive validation process, while expensive, is essential for rigor. Problems requiring multiple generation attempts show 68\% higher final accuracy than single-attempt solutions, recognize the results of branching in terms of error recovery. Our framework transforms a less sophisticated base model into a system that outperforms specialized reasoning models.
+
+\textbf{[R3] Ablate.} Table~\ref{tab:ablation} shows the contribution of individual SFC components through systematic ablation. Progressive validation alone provides the largest accuracy improvement (+6.0 percentage points over baseline), while scientific validation maximally enhances validity (+12.5 percentage points). The ablation shows interesting interactions: progressive validation combined with graph structure yields higher accuracy the full system (50.1\%), suggesting potential over-validation in certain configurations. However, the full system maintains superior validity (91.7\% vs 87.6\%), confirming that comprehensive validation is necessary for applications where correctness is paramount.
+
+
+\textbf{[R4] Calibration and Coverage.} 
+It presents calibration analysis confirming SFC's guarantees. Our subgraph filtering approach maintains calibration across factuality levels while achieving superior claim retention compared to baseline methods. At 90\% target factuality, SFC retains 80\% of generated claims, better than independent baselines that retain only 65\% at comparable factuality levels. The calibration plot shows dependability across confidence levels. Despite validation requirements, SFC maintains practical applicability. Total processing time averages 53 seconds per problem, with API efficiency enhanced through caching (3.3\% cache hit rate indicates diverse validation queries). The overhead compared to baseline generation proves acceptable for scientific applications where accuracy and validity are critical.
+
+\section{Conclusion}
+
+We introduce Scientific Feasibility Control (SFC), the first conformal prediction framework designed specifically for scientific reasoning. Our key contributions include formalizing absolute-coherent-factuality to capture scientific reasoning structure, extending conformal prediction to graph-structured dependencies, and demonstrating substantial improvements across challenging scientific benchmarks. Our approach achieves 50.1\% accuracy on PhyX physics reasoning while maintaining 91.7\% scientific validity with formal conformal coverage guarantees. This represents a significant advance over both general reasoning models and scientific specialists, establishing SFC as a robust framework for reliable scientific text generation.
+
+\bibliography{uai2026-template/uai2026-template}
+
+\clearpage
+\appendix
+\renewcommand{\thesection}{\Alph{section}}
+\renewcommand{\thesubsection}{\thesection.\arabic{subsection}}
+\renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
+\section{Theoretical Foundations}
+
+\subsection{Why Fact-Options Beyond Graph Dependencies}
+
+The effectiveness of our fact-option decomposition stems from fundamental properties of scientific reasoning rather than graph structure alone. Scientific statements possess inherent atomicity—they make specific, verifiable claims about physical reality that can be independently assessed against scientific ground truth.
+
+Consider the statement: "The kinetic energy of the moving object equals $\frac{1}{2}mv^2$ where $m=2.0$ kg and $v=3.0$ m/s, giving $KE = 9.0$ J." This contains multiple atomic fact-options:
+\begin{itemize}
+    \item Physical principle: $KE = \frac{1}{2}mv^2$ (verifiable against physics textbooks)
+    \item Parameter specification: $m = 2.0$ kg, $v = 3.0$ m/s (verifiable against problem context)
+    \item Mathematical computation: $\frac{1}{2} \times 2.0 \times 3.0^2 = 9.0$ (verifiable arithmetically)
+\end{itemize}
+
+Each fact-option can be validated independently using domain-specific knowledge, regardless of dependency relationships. This atomic structure enables systematic verification that would be impossible with coarser granularities.
+
+\subsection{Formal Properties of Progressive Validation}
+
+\begin{theorem}[Cascade Prevention Property]
+Let $(f_1, \ldots, f_n)$ be a sequence generated by progressive validation with threshold $\tau$. If $f_i$ is the first violation ($\sigma(f_i | \{f_1, \ldots, f_{i-1}\}) > \tau$), then the prefix $(f_1, \ldots, f_{i-1})$ is absolute-coherent-factual.
+\end{theorem}
+
+\begin{proof}
+By construction, each $f_j$ for $j < i$ satisfied both individual validity ($f_j \models \mathcal{T}$) and contextual substantiation (deducible from verified prefix and ground truth). The progressive validation ensures no violation propagated to subsequent sentences.
+\end{proof}
+
+This property distinguishes progressive validation from post-hoc filtering, which cannot prevent cascade contamination during generation.
+
+\subsection{Graph Structure as Implementation Tool}
+
+While our theoretical framework does not require graph dependencies, approximate deducibility graphs serve as practical implementation tools for three reasons:
+
+\textbf{Conformal Prediction Compatibility}: Standard conformal prediction assumes independence, requiring graph structure to handle dependencies while maintaining coverage guarantees.
+
+\textbf{Computational Tractability}: Graph representation enables efficient subgraph selection algorithms for finding maximal valid reasoning chains.
+
+\textbf{Logical Dependency Modeling}: Though not theoretically necessary, explicit dependency representation aids in coherence assessment and validation planning.
+
+The graph structure augments rather than defines our approach—
+the core innovations of progressive validation and dynamic branching operate independently of specific dependency representations.
+
+\section{More Details on Conformal Factuality}
+\label{app:mohri_details}
+
+We expand on the details of \citet{mohri2024language} application of conformal prediction to language model outputs. More formally, \citet{mohri2024language} frame factuality in terms of entailment by the ground truth.
+
+\begin{definition}[Entailment operator]
+The function $E : C \rightarrow \{C_{\text{support}} \subseteq 2^C\}$ takes in a claim $c \in C$ and outputs each set $C_{\text{support}} \subseteq 2^C$ of claims whose conjunction implies $c$. If $C \in E(c)$, we abuse notation and simply write $C \Rightarrow c$.
+\end{definition}
+
+\citet{mohri2024language} seek to retain claims $c$ such that $\mathcal{C}_{\text{true}} \Rightarrow c$ for each $c$, and consider this sufficient for realizing factuality of an output. There is some difference in notation between this definition and the original since \citet{mohri2024language} frame the ground truth $\mathcal{C}_{\text{true}}$ as simply an element of $Y$, while we frame it as a set of claims.
+
+\begin{definition}[Independent non-conformity scoring function]
+For a particular output $Y$ with claims $C = \mathcal{S}(Y)$ and some set $T$ of candidate thresholds, the non-conformity score $r$ is defined as follows:
+$$r(X,Y,T) = \inf\{\tau \in T : \forall j \geq \tau, \forall y \in C, (\sigma(y) \geq j) \}$$
+\end{definition}
+
+Then, since increasing the threshold can only remove claims, the traditional conformal guarantee
+$$1-\alpha \leq P[r(X_{n+1},Y_{n+1},T) \leq \hat{q}_\alpha] \leq 1-\alpha + \frac{1}{n+1}$$
+can be written as
+$$1-\alpha \leq P[\forall y \in \mathcal{S}(Y^{\hat{q}_\alpha}_{n+1}), \mathcal{C}_{\text{true}} \Rightarrow y] \leq 1-\alpha + \frac{1}{n+1}$$
+
+Then, they assume that $(\forall y \in \mathcal{S}(Y), \mathcal{C}_{\text{true}} \Rightarrow y) \Leftrightarrow (Y \text{ is factual})$, so we obtain
+$$1-\alpha \leq P[Y^{\hat{q}_\alpha}_{n+1} \text{ is factual}] \leq 1-\alpha + \frac{1}{n+1}$$
+
+\section{Proof of Coherent Factuality Theorem}
+\label{app:coherent_proof}
+
+\begin{proof}
+To show the following, we refer to the notion of ancestor connectedness introduced in Definition 4. Recall that to obtain the upper bound, we assume that $r(X,Y,\cdot) < \infty$ $\forall(X,Y)$. Note that, if we apply Algorithm 1 to $G_{n+1}$, each subgraph in output $U_{T_{n+1}}$ satisfies ancestor connectedness. As we proceed, for ease of notation, we simply write $r(X_{n+1})$ for $r(X_{n+1},Y_{n+1},U_{T_{n+1}})$.
+
+Now, since $(1-r(X_{n+1}) \leq \hat{q}_\alpha) \Leftrightarrow (r(X_{n+1}) \geq 1-\hat{q}_\alpha)$, we have
+$$1-\alpha \leq P[r(X_{n+1}) \geq 1-\hat{q}_\alpha] \leq 1-\alpha + \frac{1}{n+1}$$
+as a standard split conformal result (where the probability is taken over the draw of the calibration set and $(X_{n+1},Y_{n+1})$).
+
+To prove the claim, it suffices to show $r(X_{n+1}) \geq 1-\hat{q}_\alpha \Leftrightarrow Y^{\hat{q}_\alpha}_{n+1} \text{ is coherently factual}$.
+
+For both directions, we will consider $U_{\text{filtered}}$ as in Section 4.
+
+\textbf{Forward direction:} Assume $r(X_{n+1}) \geq 1-\hat{q}_\alpha$. Then, by definition, conformally filtered $Y^{\hat{q}_\alpha}_{n+1}$ is coherently factual (since $r(X_{n+1})$ is defined such that each subgraph with less risk is coherently factual, and $U_{\text{filtered}}$ satisfies this since $\tau_{\text{filtered}} < 1-\hat{q}_\alpha \leq r(X_{n+1})$). Note that we make no assumptions on the quality of deducibility graphs to obtain this result.
+
+\textbf{Reverse direction:} We will show the contrapositive. Assume $r(X_{n+1}) < 1-\hat{q}_\alpha$. Since $r(X,Y,\cdot) < \infty$, there exists a subgraph, threshold $(U_{\text{bad}}, \tau_{\text{bad}})$ with $U_{\text{bad}} = (V_{\text{bad}}, E_{\text{bad}}) \in U_{n+1}$, $\tau_{\text{bad}} < 1-\hat{q}_\alpha$; otherwise, the first bad graph would have risk at least $1-\hat{q}_\alpha$, so the supremum of safe scores $r(X_{n+1})$ would be at least $1-\hat{q}_\alpha$.
+
+Say $Y^{\hat{q}_\alpha}_{n+1}$ is the vertex set from $U_{\text{filtered}}$. Note that $\tau_{\text{filtered}} \geq \tau_{\text{bad}}$ (since $\tau_{\text{filtered}}$ is the maximum of risks below $1-\hat{q}_\alpha$). If $U_{\text{filtered}} = U_{\text{bad}}$, the desired result ($Y^{\hat{q}_\alpha}_{n+1}$ is not coherently factual) follows. Otherwise, $U_{\text{bad}}$ is a subgraph of $U_{\text{filtered}}$, and both are ancestor-connected, properties obtained by Algorithm 1. In particular, this means $V_{\text{filtered}}$ is a superset of $V_{\text{bad}}$.
+
+Note that $G_{n+1}$ is an approximate deducibility graph and $U_{\text{bad}}$ is an ancestor-connected subgraph with no coherently factual ordering (if it had one, $V'_{\text{bad}}$ in particular would be coherently factual by Definition 4). Additionally, any superset of $V_{\text{bad}}$ has no coherently factual ordering, also by Definition 4. However, $Y^{\hat{q}_\alpha}_{n+1}$ is one such ordering on superset $V_{\text{filtered}}$, which concludes the contrapositive of the backward direction.
+
+We have thus shown that $(r(X_{n+1}) \geq 1-\hat{q}_\alpha) \Leftrightarrow (Y^{\hat{q}_\alpha}_{n+1} \text{ is factual})$, which proves the claim.
+\end{proof}
+
+
+\section{Tire of Domain-Adaptive Implementation Theorem}
+\label{app:domain-adaptive}
+\textbf{Addressing Generalizability Concerns}
+The domain-adaptive implementation of SFC raises important questions about the tension between specialized performance and universal applicability. We provide a comprehensive analysis of this trade-off and demonstrate how our framework maintains distribution-free guarantees while enabling domain-specific optimization.
+\textbf{The Universality-Specialization Trade-off}: While SFC's core progressive generation and sequence-structured conformal prediction provide universal guarantees across all scientific domains, domain-adaptive components serve as performance enhancement layers rather than fundamental requirements. We establish this through the following theoretical framework:
+\begin{theorem}[Hierarchical Universality]
+\label{thm:hierarchical-universality}
+The SFC framework operates at two levels: (1) a universal base layer providing distribution-free guarantees across all scientific domains through core progressive generation and universal validation principles, and (2) an optional domain-adaptive enhancement layer that improves performance for specific domains while preserving universal guarantees.
+\end{theorem}
+\begin{proof}
+The universal base layer relies solely on Universal Sequential Substantiation and employs validation criteria based on mathematical consistency, logical coherence, and fundamental physical principles that transcend domain boundaries. The conformal guarantee $P[\text{Selected subsequence is absolute-coherent-factual}] \geq 1-\alpha$ holds for this base layer regardless of domain specification.
+Domain-adaptive enhancements modify only the weighting parameters $\beta_d, \gamma_d$ in Equation~(4.2) and the threshold selection strategy, without altering the fundamental validation mechanisms. These modifications can only improve performance (by reducing false positives) while preserving the lower bound guarantee of the universal base layer.
+\end{proof}
+\textbf{Justification for Domain-Specific Calibration}
+\textbf{Performance vs. Generalizability}: Domain-specific calibration addresses a fundamental challenge in scientific reasoning: different fields exhibit distinct error patterns and validation complexity. Consider the following empirical observations:
+\begin{itemize}
+\item \textbf{Physics}: Emphasizes conservation laws and dimensional consistency
+\item \textbf{Chemistry}: Prioritizes stoichiometric balance and thermodynamic feasibility
+\item \textbf{Mathematics}: Focuses on logical deduction and proof structure
+\end{itemize}
+While universal validation can detect gross violations across all domains, domain-specific calibration enables fine-grained discrimination of subtle errors that are field-dependent.
+\textbf{Formal Analysis of Domain Benefits}: Let $\epsilon_{\text{universal}}$ and $\epsilon_{\text{domain}}$ represent the expected validation error rates for universal and domain-specific approaches, respectively. We establish:
+\begin{proposition}[Domain Advantage Bound]
+\label{prop:domain-advantage}
+For sufficiently large calibration sets and well-separated domain characteristics, domain-specific calibration achieves:
+\[
+\epsilon_{\text{domain}} \leq \epsilon_{\text{universal}} - \Delta_d
+\]
+where $\Delta_d > 0$ represents the domain-specific improvement margin.
+
+\end{proposition}
+\textbf{Addressing the Limitation Concerns}: The requirement for domain-specific calibration sets does introduce practical limitations:
+\begin{enumerate}
+\item \textbf{Data Requirements}: Each domain requires sufficient calibration examples
+\item \textbf{Domain Classification}: Input queries must be correctly classified
+\item \textbf{Coverage Gaps}: Novel interdisciplinary fields may lack appropriate calibration
+\end{enumerate}
+\textbf{Mitigation Strategies and Theoretical Guarantees}
+\textbf{Graceful Degradation}: Our framework addresses these limitations through several mechanisms:
+\textbf{Conservative Fallback}: When domain classification is uncertain or calibration data is insufficient, the system defaults to universal validation with $\hat{q}{\alpha,\text{universal}} = \min_d \hat{q}{\alpha,d}$, ensuring conservative but reliable guarantees.
+\textbf{Bootstrap Adaptation}: For new domains, our framework can bootstrap from universal calibration and gradually incorporate domain-specific examples through online learning.
+\begin{theorem}[Robust Guarantee Preservation]
+\label{thm:robust-guarantee}
+Under any domain classification uncertainty or calibration insufficiency, the SFC framework maintains conformal coverage guarantees by defaulting to conservative universal thresholds, ensuring $P[\text{Coverage}] \geq 1-\alpha$ in all scenarios.
+\end{theorem}
+\textbf{Empirical Validation of Domain-Agnostic Operation}
+To demonstrate the universal applicability claim, we evaluate SFC performance under different domain knowledge scenarios:
+\begin{table}[ht]
+\centering
+\small
+\caption{Performance comparison across domain knowledge scenarios on PhyX dataset. Universal operation maintains strong guarantees while domain adaptation provides incremental improvements.}
+\label{tab:domain-comparison}
+\arrayrulecolor{black}
+\begin{tabular}{l|c|c|c}
+\hline
+Configuration & Accuracy & Validity & Coverage \\
+\hline
+Universal Only & 47.3 & 89.1 & - \\
+Domain-Adaptive & 50.1 & 91.7 & - \\
+\hline
+Mixed Classification & - & - & 0.91 \\
+Conservative Fallback & - & - & 0.93 \\
+\hline
+\end{tabular}
+\end{table}
+\textbf{Key Findings}:
+\begin{enumerate}
+\item Universal operation achieves 89.1\% validity with guaranteed coverage
+\item Domain adaptation provides 2.6\% validity improvement
+\item Classification errors result in minimal degradation (1.3\%)
+\item Conservative fallback maintains coverage guarantees with slight accuracy trade-off
+\end{enumerate}
+\textbf{Conclusion: Balanced Approach to Universality}
+The domain-adaptive implementation represents an engineering optimization rather than a theoretical necessity. While it introduces practical considerations regarding domain-specific calibration, these limitations are mitigated through:
+\begin{itemize}
+\item Robust fallback mechanisms ensuring universal coverage
+\item Hierarchical design separating universal guarantees from specialized enhancements
+\item Empirical demonstration of strong performance in universal mode
+\end{itemize}
+The framework thus achieves a balanced solution: universal applicability with optional specialization, maintaining distribution-free theoretical properties while enabling performance optimization for specific scientific domains when resources permit.
+
+
+\section{Computational Implementation of Deducibility in Absolute-Coherent-Factuality}
+\label{app:deducibility-computation}
+
+\textbf{The Deducibility Challenge}
+
+Definition~\ref{def:absolute-coherent-factuality} requires that each fact-option $f_i$ be "deducible from $(f_1,\ldots,f_{i-1}), X, \mathcal{T}$." While this captures the essential logical structure of scientific reasoning, the practical computation of deducibility presents significant challenges that we address through a multi-layered computational framework.
+
+\textbf{Computational Framework for Deducibility Assessment}
+
+We implement deducibility assessment through a hierarchical approach that combines symbolic reasoning, neural semantic analysis, and domain-specific inference engines.
+
+\subsubsection*{Tier 1: Symbolic Logical Deduction}
+
+For mathematical and formal logical content, we employ automated theorem proving and symbolic reasoning:
+
+\textbf{Formal Logic Engine}: We represent fact-options in first-order logic and use resolution-based theorem provers to establish deducibility. For a fact-option $f_i$ with logical representation $\phi_i$, and accumulated context $\Phi_{i-1} = \{\phi_1, \ldots, \phi_{i-1}\}$, we compute:
+
+$$\text{Deducible}_{\text{symbolic}}(f_i | \mathcal{C}_{i-1}) = \mathbf{1}[\Phi_{i-1} \cup \mathcal{T}_{\text{formal}} \vdash \phi_i]$$
+
+where $\mathcal{T}_{\text{formal}}$ represents formalized domain axioms and $\vdash$ denotes logical entailment.
+
+\textbf{Mathematical Consistency Checking}: For equations and mathematical expressions, we verify derivability through computer algebra systems:
+
+\begin{algorithm}[h]
+\caption{Mathematical Deducibility Verification}
+\label{alg:math-deducibility}
+\begin{algorithmic}[1]
+\STATE \textbf{Input:} Mathematical fact-option $f_i$, context equations $E_{i-1}$
+\STATE \textbf{Output:} Deducibility score $d_{\text{math}} \in [0,1]$
+\STATE Parse $f_i$ into symbolic expression $e_i$
+\STATE Extract mathematical relationships from $E_{i-1}$
+\STATE \textbf{if} $e_i$ algebraically derivable from $E_{i-1}$ \textbf{then}
+\STATE \quad \textbf{return} 1.0
+\STATE \textbf{else if} $e_i$ dimensionally consistent with $E_{i-1}$ \textbf{then}
+\STATE \quad \textbf{return} 0.7
+\STATE \textbf{else}
+\STATE \quad \textbf{return} 0.0
+\STATE \textbf{end if}
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection*{Tier 2: Semantic Entailment Assessment}
+
+For natural language scientific reasoning, we employ neural semantic entailment models specifically trained on scientific text:
+
+\textbf{Scientific Entailment Model}: We fine-tune large language models on scientific entailment datasets to compute:
+
+$$\text{Entailment}_{\text{semantic}}(f_i | \mathcal{C}_{i-1}) = P_{\text{model}}(f_i \text{ entailed by } \mathcal{C}_{i-1} \cup X)$$
+
+This probability is computed through:
+\begin{enumerate}
+\item Contextual encoding of accumulated facts $\mathcal{C}_{i-1}$ and input $X$
+\item Claim representation of $f_i$
+\item Attention-based reasoning over context-claim relationships
+\item Output probability calibration using Platt scaling
+\end{enumerate}
+
+\textbf{Evidence Sufficiency Analysis}: We assess whether the accumulated context provides sufficient evidence through information-theoretic measures:
+
+$$\text{Sufficiency}(f_i | \mathcal{C}_{i-1}) = 1 - \frac{H(f_i | \mathcal{C}_{i-1})}{H(f_i)}$$
+
+where $H(\cdot)$ represents entropy, measuring how much uncertainty about $f_i$ is resolved by the context.
+
+\subsubsection*{Tier 3: Domain-Specific Inference Engines}
+
+For specialized scientific domains, we employ domain-specific reasoning systems:
+
+\textbf{Physics Reasoning Engine}: Implements conservation laws, dimensional analysis, and causal reasoning:
+
+\begin{align}
+\text{PD}(f_i | \mathcal{C}_{i-1}) &= \min\{C_i, D_i, Ca_i\} \\
+\text{where } C_i &= \text{Cons-Check}(f_i, \mathcal{C}_{i-1}) \nonumber \\
+D_i &= \text{Dim-Check}(f_i) \nonumber \\
+Ca_i &= \text{Causal-Check}(f_i, \mathcal{C}_{i-1}) \nonumber
+\end{align}
+
+\textbf{Chemistry Reasoning Engine}: Validates stoichiometric relationships and thermodynamic principles:
+
+\textbf{Mathematics Reasoning Engine}: Checks proof structure and logical argument flow.
+
+\textbf{Composite Deducibility Score}
+
+We combine assessments from all tiers through a weighted aggregation:
+
+\begin{equation}
+\text{De}(f_i | \mathcal{C}_{i-1}, X, \mathcal{T}) = \max\{
+w_1 \cdot d_{\text{sym}},
+w_2 \cdot d_{\text{se}},
+w_3 \cdot d_{\text{dom}}
+\}
+\end{equation}
+
+where weights $w_1, w_2, w_3$ are learned from validation data and the max operation ensures that strong support from any tier is sufficient for deducibility.
+
+\textbf{Practical Implementation Details}
+
+\textbf{Computational Complexity}: Our implementation achieves $O(n)$ complexity per fact-option through:
+\begin{itemize}
+\item Incremental symbolic reasoning with cached derivations
+\item Efficient neural inference using model distillation
+\item Parallel processing of domain-specific checks
+\end{itemize}
+
+\textbf{Calibration and Thresholding}: We establish deducibility thresholds through empirical calibration:
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Deducibility threshold calibration on scientific reasoning validation set.}
+\label{tab:deducibility-calibration}
+\arrayrulecolor{black}
+\begin{tabular}{l|c|c|c}
+\hline
+Deducibility Score & Accept Rate & Error Rate & Coverage \\
+\hline
+$\geq 0.9$ & 95\% & 2\% & 0.98 \\
+$[0.7, 0.9)$ & 78\% & 8\% & 0.92 \\
+$[0.5, 0.7)$ & 45\% & 15\% & 0.85 \\
+$< 0.5$ & 12\% & 35\% & 0.65 \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{Error Analysis and Robustness}: Common failure modes include:
+
+\begin{enumerate}
+\item \textbf{Implicit Knowledge Gaps}: When reasoning requires unstated domain knowledge
+\item \textbf{Multi-step Inference}: When deduction requires multiple intermediate steps
+\item \textbf{Analogical Reasoning}: When arguments rely on scientific analogies
+\end{enumerate}
+
+We address these through conservative thresholding and robust fallback mechanisms.
+
+\textbf{Validation Against Human Expert Judgments}
+
+\textbf{Expert Agreement Analysis}: We achieve substantial agreement with domain experts:
+\begin{itemize}
+\item Physics: Cohen's $\kappa = 0.78$
+\item Chemistry: Cohen's $\kappa = 0.71$ 
+\item Mathematics: Cohen's $\kappa = 0.82$
+\end{itemize}
+
+\section{Formal Proof of Process-Level Exchangeability}
+\label{app:exchangeability-proof}
+
+\textbf{Mathematical Foundations}
+
+We provide a rigorous proof that dynamic graph construction preserves exchangeability when the construction process itself is invariant across examples.
+
+\begin{definition}[Graph Construction Process]
+\label{def:graph-process}
+A graph construction process $\mathcal{G}$ is a deterministic function $\mathcal{G}: \mathcal{X} \times \mathcal{Y} \rightarrow \mathcal{G}_{DAG}$ that maps input-output pairs to directed acyclic graphs, where $\mathcal{G}_{DAG}$ denotes the space of all directed acyclic graphs over fact-options.
+\end{definition}
+
+\begin{definition}[Process Invariance]
+\label{def:process-invariance}
+A graph construction process $\mathcal{G}$ is invariant if for any two examples $(X_i,Y_i)$ and $(X_j,Y_j)$, the construction rules, dependency discovery algorithms, and scoring functions used to compute $G(X_i,Y_i)$ and $G(X_j,Y_j)$ are identical.
+\end{definition}
+
+\begin{theorem}[Process-Level Exchangeability for Dynamic Graphs]
+\label{thm:process-exchangeability-full}
+Let $(X_1,Y_1),\ldots,(X_{n+1},Y_{n+1})$ be exchangeable random variables, 
+and let $\mathcal{G}$ be an invariant graph construction process. 
+Then the augmented random variables 
+$(X_1,Y_1,G(X_1,Y_1)),\allowbreak \ldots,\allowbreak 
+(X_{n+1},Y_{n+1},\allowbreak G(X_{n+1},Y_{n+1}))$
+are exchangeable.
+
+\end{theorem}
+
+\begin{proof}
+We prove exchangeability by showing that for any permutation $\pi$ of $\{1,\ldots,n+1\}$, the joint distributions are identical.
+
+\textbf{Step 1: Deterministic Function Property}
+Since $\mathcal{G}$ is deterministic, $G(X_i,Y_i)$ is a measurable function of $(X_i,Y_i)$. For any Borel sets $A_1,\ldots,A_{n+1} \subseteq \mathcal{X} \times \mathcal{Y}$ and $B_1,\ldots,B_{n+1} \subseteq \mathcal{G}_{DAG}$:
+
+\begin{align}
+&P[(X_i,Y_i) \in A_i, G(X_i,Y_i) \in B_i \text{ for } i=1,\ldots,n+1] \nonumber \\
+&= P[(X_i,Y_i) \in A_i \cap \mathcal{G}^{-1}(B_i) \text{ for } i=1,\ldots,n+1]
+\end{align}
+
+where $\mathcal{G}^{-1}(B_i) = \{(x,y) : \mathcal{G}(x,y) \in B_i\}$.
+
+\textbf{Step 2: Exchangeability Preservation}
+Since \(
+(X_1,Y_1),\allowbreak\,(X_2,Y_2),\allowbreak\,\ldots,\allowbreak\, 
+(X_{n+1},Y_{n+1})
+\) are exchangeable, for any permutation~\(\pi\):
+
+
+\begin{align}
+&P[(X_i,Y_i) \in A_i \cap \mathcal{G}^{-1}(B_i) \text{ for } i=1,\ldots,n+1] \nonumber \\
+&= P[(X_{\pi(i)},Y_{\pi(i)}) \in A_i \cap \mathcal{G}^{-1}(B_i) \text{ for } i=1,\ldots,n+1]
+\end{align}
+
+\textbf{Step 3: Process Invariance Application}
+By process invariance, $\mathcal{G}(X_{\pi(i)},Y_{\pi(i)})$ uses the same construction rules as $\mathcal{G}(X_i,Y_i)$. Therefore:
+
+\begin{align}
+&P[(X_{\pi(i)},Y_{\pi(i)}) \in A_i \cap \mathcal{G}^{-1}(B_i) \text{ for } i=1,\ldots,n+1] \nonumber \\
+&= P[(X_{\pi(i)},Y_{\pi(i)}) \in A_{\pi^{-1}(i)}, G(X_{\pi(i)},Y_{\pi(i)}) \nonumber \\
+&\quad \in B_{\pi^{-1}(i)} \text{ for } i=1,\ldots,n+1]
+\end{align}
+
+\textbf{Step 4: Conclusion}
+This establishes that 
+$(X_1,Y_1,G(X_1,Y_1)),\allowbreak \ldots,\allowbreak 
+(X_{n+1},Y_{n+1},G(X_{n+1},Y_{n+1}))$
+are exchangeable.
+
+\end{proof}
+
+\textbf{Implications for Conformal Prediction}
+
+\begin{corollary}[Conformal Validity for Dynamic Graphs]
+\label{cor:conformal-validity}
+Under the conditions of Theorem~\ref{thm:process-exchangeability-full}, the conformal prediction set constructed using the non-conformity score $r(X,Y,G(X,Y))$ satisfies:
+$$P[Y_{n+1} \text{ is covered by prediction set}] \geq 1-\alpha$$
+for any significance level $\alpha \in (0,1)$.
+\end{corollary}
+
+\begin{proof}
+This follows directly from the classical conformal prediction theory applied to the exchangeable sequence $(X_1,Y_1,G(X_1,Y_1)),\allowbreak \ldots,\allowbreak(X_{n+1},Y_{n+1},$ $G(X_{n+1},Y_{n+1}))$.
+\end{proof}
+
+\textbf{Computational Complexity Analysis}
+
+\begin{theorem}[Template-Based Complexity Bound]
+\label{thm:complexity-bound}
+The temp
+-late-based dependency discovery algorithm achieves time complexity $O(n \log k + nT)$ where $n$ is the sequence length, $k$ is the number of templates, and $T$ is the maximum template application time.
+\end{theorem}
+
+\begin{proof}
+For each new unit $f_t$:
+\begin{enumerate}
+\item Pattern extraction: $O(1)$ using pre-computed features
+\item Template matching: $O(\log k)$ using binary search on sorted templates
+\item Template application: $O(T)$ per matched template, with at most $O(1)$ matches per unit
+\end{enumerate}
+
+Total complexity over $n$ units: $O(n(\log k + T)) = O(n \log k + nT)$.
+
+For typical scientific reasoning with $k \leq 100$ templates and $T \leq 10$ operations per template, this achieves practical efficiency.
+\end{proof}
+
+\textbf{Empirical Validation of Process Invariance}
+
+We validate that our dependency discovery functions maintain process invariance through controlled experiments:
+
+\begin{table}[htb]
+\centering
+\caption{Process invariance validation across 1000 example pairs. Determinism Score measures output consistency for identical inputs. Consistency Score measures agreement across semantically equivalent inputs.}
+\label{tab:process-invariance}
+\scriptsize
+\begin{tabular}{lccc}
+\hline
+Dependency Function & Determinism & Consistency & Variance \\
+\hline
+SemanticDependency & 0.998 & 0.994 & 0.002 \\
+MathematicalDependency & 1.000 & 1.000 & 0.000 \\
+CausalDependency & 0.995 & 0.991 & 0.004 \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{Experimental Setup}: We test each dependency function on:
+1. \textbf{Identical pairs}: Same $(X,Y)$ processed twice
+2. \textbf{Equivalent pairs}: Semantically identical but syntactically different $(X,Y)$
+3. \textbf{Perturbed pairs}: $(X,Y)$ with minor irrelevant modifications
+
+High scores across all metrics confirm that our implementation maintains the process invariance required for theoretical guarantees.
+
+\textbf{Robustness Analysis}
+
+\textbf{Sensitivity to Template Library}: We analyze how template library completeness affects coverage guarantees:
+
+\begin{proposition}[Template Completeness Bound]
+\label{prop:template-completeness}
+If the template library captures at least $(1-\epsilon)$ fraction of true dependencies in the domain, then the effective coverage rate is at least $(1-\alpha)(1-\epsilon)$.
+\end{proposition}
+
+This provides a principled approach to template library design and coverage guarantee adjustment.
+
+\textbf{Noise Robustness}: Small perturbations in dependency scores do not affect coverage guarantees as long as the ranking order of non-conformity scores remains stable, which our template-based approach ensures through discrete decision boundaries.
+
+\textbf{Comparison with Alternative Approaches}
+
+\begin{table}[htb]
+\centering
+\caption{Comparison of dependency modeling approaches.}
+\label{tab:approach-comparison}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Approach & Expr. & Theor. & Complex. & Pract. \\
+\midrule
+Linear Sequence & Low & Strong & $O(n)$ & High \\
+Static Graph & Med. & Strong & $O(n^2)$ & Med. \\
+Dynamic (Naive) & High & Weak & $O(n^3)$ & Low \\
+\textbf{Dynamic (Ours)} & \textbf{High} & \textbf{Strong} & $\mathbf{O(n \log k)}$ & \textbf{High} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Our approach uniquely combines high expressiveness with strong theoretical guarantees and practical efficiency.
+
+\section{Implementation Details}
+\label{app:implementation-details}
+
+\textbf{Dependency Function Specifications}
+
+\textbf{SemanticDependency Implementation}:
+\begin{algorithm}[H]
+\caption{Semantic Dependency Computation}
+\begin{algorithmic}[1]
+\STATE \textbf{Input:} Units $f_t$, $v$, pre-trained encoder $E$
+\STATE $\text{emb}_t \leftarrow E(f_t)$, $\text{emb}_v \leftarrow E(v)$
+\STATE $\text{similarity} \leftarrow \text{cosine}(\text{emb}_t, \text{emb}_v)$
+\STATE $\text{entailment} \leftarrow \text{NLI\_Model}(v, f_t)$
+\STATE \textbf{return} $0.6 \cdot \text{similarity} + 0.4 \cdot \text{entailment}$
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{MathematicalDependency Implementation}:
+Uses symbolic computation with SymPy for:
+\begin{itemize}
+\item Variable dependency analysis
+\item Equation derivation checking  
+\item Dimensional consistency verification
+\end{itemize}
+
+\textbf{CausalDependency Implementation}:
+Template-based pattern matching for:
+\begin{itemize}
+\item Temporal precedence (``after X, then Y'')
+\item Causal connectives (``because'', ``therefore'', ``leads to'')
+\item Mechanistic relationships (``by applying X to Y'')
+\end{itemize}
+
+These implementations ensure deterministic, reproducible dependency discovery while maintaining computational efficiency.
+
+
+\section{Resolving Circular Reasoning in Domain Classification}
+\label{app:circular-resolution}
+
+\textbf{The Fundamental Circularity Problem}
+
+The critical challenge lies in the apparent circular dependency: domain classification $\delta(X)$ influences validation parameters, while validation outcomes could theoretically influence domain assignment. For interdisciplinary queries, simple lexical pattern matching proves insufficient, potentially creating classification instability that undermines theoretical guarantees.
+
+\textbf{Hierarchical Independence Architecture}
+
+We resolve this circularity through a \emph{hierarchical independence architecture} that separates classification from validation across multiple abstraction levels.
+
+\begin{definition}[Content-Agnostic Domain Classification]
+\label{def:content-agnostic}
+A domain classifier $\delta: \mathcal{X} \rightarrow \mathcal{D}$ is content-agnostic if it operates exclusively on syntactic, lexical, and structural features of the input $X$ without access to semantic content or generated responses.
+\end{definition}
+
+Our implementation employs three independent classification tiers:
+
+\textbf{Tier 1 - Syntactic Structure Analysis}: Identifies domain through mathematical notation patterns, equation structures, and formal language elements:
+\begin{equation}
+\delta_{\text{syntax}}(X) = \arg\max_{d \in \mathcal{D}} \sum_{p \in \mathcal{P}_d} \text{count}(\text{pattern}_p, X)
+\end{equation}
+where $\mathcal{P}_d$ represents domain-specific syntactic patterns (e.g., differential equations → physics, chemical formulas → chemistry).
+
+\textbf{Tier 2 - Lexical Domain Vocabulary}: Uses curated, non-overla
+-pping domain-specific vocabularies constructed through expert annotation:
+\begin{equation}
+\delta_{\text{lexical}}(X) = \arg\max_{d \in \mathcal{D}} \frac{|\text{vocab}_d \cap \text{tokens}(X)|}{|\text{tokens}(X)|}
+\end{equation}
+
+\textbf{Tier 3 - Query Structure Templates}: Matches input structure against domain-specific question templates without semantic interpretation:
+\begin{equation}
+\delta_{\text{template}}(X) = \arg\max_{d \in \mathcal{D}} \max_{t \in \mathcal{T}_d} \text{structural-match}(X, t)
+\end{equation}
+
+\textbf{Interdisciplinary Query Handling}
+
+For complex interdisciplinary cases where simple classification fails, we employ a \emph{domain portfolio approach}:
+
+\begin{algorithm}[htb]
+\caption{Domain Portfolio Construction}
+\label{alg:domain-portfolio}
+\scriptsize
+\begin{algorithmic}[1]
+\STATE \textbf{Input:} Query $X$, threshold $\theta = 0.7$
+\STATE \textbf{Output:} Portfolio $\mathcal{D}$ with weights $\{w_d\}$
+\STATE Compute $c_d = \text{conf}(\delta_d(X))$ $\forall d$
+\IF{$\max_d c_d > \theta$}
+    \RETURN $\{(\arg\max_d c_d, 1.0)\}$
+\ELSE
+    \STATE $\mathcal{D}_{act} \leftarrow \{d : c_d > \theta/2\}$
+    \STATE $w_d \leftarrow c_d / \sum_{d'} c_{d'}$ for $d \in \mathcal{D}_{act}$
+    \RETURN $\{(d, w_d)\}_{d \in \mathcal{D}_{act}}$
+\ENDIF
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Conservative Validation Strategy}
+
+For interdisciplinary portfolios, we employ conservative aggregation that maintains theoretical guarantees:
+
+\begin{theorem}[Portfolio Coverage Guarantee]
+\label{thm:portfolio-coverage}
+For a domain portfolio $\mathcal{D}_{\text{portfolio}}$ with weights $\{w_d\}$, using conservative quantile $\hat{q}_{\alpha,\text{portfolio}} = \min_{d \in \mathcal{D}_{\text{portfolio}}} \hat{q}_{\alpha,d}$ ensures coverage guarantee:
+\begin{equation}
+P[\text{Coverage}] \geq 1-\alpha
+\end{equation}
+regardless of the true underlying domain distribution.
+\end{theorem}
+
+\begin{proof}
+Since each domain-specific quantile $\hat{q}_{\alpha,d}$ provides $(1-\alpha)$ coverage for domain $d$, and we use the minimum (most conservative) quantile across all portfolio domains, the coverage guarantee holds for any mixture of domains in the portfolio.
+\end{proof}
+
+\textbf{Empirical Validation of Independence}
+
+We validate the independence of our classification system through controlled experiments:
+
+\begin{table}[htb]
+\centering
+\caption{Classification independence validation results. Here, {Acc.} denotes Accuracy (\%), {Stab.} denotes Stability, {Port.} denotes Portfolio Quality, and {Cov.} denotes Coverage.}
+\label{tab:classification-independence}
+
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\multirow{2}{*}{\textbf{Method}} & \multicolumn{2}{c}{\textbf{Single Domain}} & \multicolumn{2}{c}{\textbf{Interdisciplinary}} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5}
+& Acc. & Stab. & Port. & Cov. \\
+\midrule
+Lexical Only & 87.3 & 0.92 & 0.62 & 0.89 \\
+Syntactic Only & 79.1 & 0.95 & 0.54 & 0.91 \\
+Template Only & 82.7 & 0.97 & 0.59 & 0.90 \\
+\textbf{Hierarchical (Ours)} & \textbf{91.4} & \textbf{0.98} & \textbf{0.73} & \textbf{0.92} \\
+Content-Aware & 94.2 & 0.71 & 0.42 & 0.83 \\
+\bottomrule
+\end{tabular}
+% \vspace{0.1cm}
+% {\tiny Acc.=Accuracy(\%), Stab.=Stability, Port.=Portfolio Quality, Cov.=Coverage}
+\end{table}
+
+\textbf{Key Findings}:
+\begin{enumerate}
+\item Hierarchical approach achieves near-optimal accuracy while maintaining high stability
+\item Interdisciplinary portfolio construction significantly outperforms single-domain forcing
+\item Content-agnostic methods provide more reliable coverage guarantees
+\item Conservative aggregation preserves theoretical properties with minimal performance loss
+\end{enumerate}
+
+\textbf{Addressing Complex Interdisciplinary Cases}
+
+For the most challenging interdisciplinary queries (e.g., biophysics, computational chemistry, mathematical physics), we provide three specialized strategies:
+
+\textbf{Strategy 1 - Hierarchical Decomposition}: Break complex queries into domain-specific sub-components:
+\begin{equation}
+X_{\text{complex}} \rightarrow \{X_{\text{physics}}, X_{\text{chemistry}}, X_{\text{math}}\}
+\end{equation}
+Each sub-component processed with appropriate domain-specific validation.
+
+\textbf{Strategy 2 - Universal Validation Mode}: When domain portfolio confidence remains low ($\max_d w_d < 0.4$), default to domain-agnostic universal validation using only fundamental scientific principles.
+
+\textbf{Strategy 3 - Conservative Ensemble}: Apply validation from all potentially relevant domains and require consensus for acceptance:
+\begin{equation}
+\text{Accept}(f_i) \Leftrightarrow \bigwedge_{d \in \mathcal{D}_{\text{portfolio}}} [\sigma_d(f_i) \leq \hat{q}_{\alpha,d}]
+\end{equation}
+
+\textbf{Theoretical Guarantee Preservation}
+
+\begin{theorem}[Circularity-Free Coverage]
+\label{thm:circularity-free}
+Under content-agnostic domain classification (Definition~\ref{def:content-agnostic}) with conservative portfolio aggregation, the coverage guarantee $P[\text{Coverage}] \geq 1-\alpha$ holds independently of validation outcomes, eliminating circular dependencies.
+\end{theorem}
+
+\begin{proof}
+Content-agnostic classification operates solely on input features $X$, making it functionally independent of validation results on generated content $Y$. Portfolio aggregation uses predetermined conservative quantiles, ensuring coverage regardless of domain mixture uncertainty.
+\end{proof}
+
+\textbf{Computational Efficiency}
+
+Our hierarchical approach maintains efficiency through:
+\begin{itemize}
+\item \textbf{Tier 1}: $O(|X|)$ syntactic pattern matching
+\item \textbf{Tier 2}: $O(|X| \log |\text{vocab}|)$ vocabulary lookup  
+\item \textbf{Tier 3}: $O(|\mathcal{T}|)$ template matching with $|\mathcal{T}| \leq 50$
+\end{itemize}
+
+Total classification complexity: $O(|X| \log |\text{vocab}| + |\mathcal{T}|)$, independent of validation complexity.
+
+\textbf{Limitations and Future Directions}
+
+Our approach handles the vast majority of scientific queries but acknowledges limitations:
+
+\begin{enumerate}
+\item \textbf{Novel Interdisciplinary Fields}: Emerging fields (e.g., quantum biology) may lack established syntactic patterns
+\item \textbf{Highly Abstract Queries}: Pure theoretical questions may not exhibit clear domain markers
+\item \textbf{Template Coverage}: Template library requires periodic updates for new query types
+\end{enumerate}
+
+\textbf{Future Research}: Investigation of unsupervised domain discovery for emerging fields and adaptive template learning for novel query patterns.
+
+
+\section{Costs Associated with GPT Queries and Running on Llama-3.1-70B-Instruct}
+\label{app:costs}
+
+\textbf{Cost and reproducibility.} We replicated our main experiments with Llama-3.1-70B-Instruct (for output and graph generation) with slight changes to the prompting required to elicit useful graphs (see Appendix~\ref{app:api-usage}). We find that the utility of the approach holds for less powerful open-source models.
+
+The algorithm is also inexpensive to implement. For each example in the calibration and test set, the algorithm requires 8 queries comprising at most 16k tokens; for our calibration set of 50 examples, this cost less than \$5.00 using GPT and less than \$0.70 using Llama. The same queries are made for the test set, so each test example cost less than \$0.10 for GPT and \$0.01 for Llama. These estimates are conservative, assuming full utilization of 2000-token total context and output to accommodate longer form responses (although our responses were much shorter). Perhaps more prohibitive than monetary cost is the number of annotations necessary (at worst exponential in $n$, the number of subclaims for an example). However, this is a one-time cost for calibration, and our results suggest that silver annotations, of which there are $n$, suffice.
+% --- Table 1 ---
+\begin{table}[ht]
+\centering
+
+
+\caption{Validity comparison across benchmarks with 95\% confidence intervals.}
+\label{tab:validity_ci}
+\small
+\begin{tabular}{l|l|c|c|c}
+\hline
+\textbf{Benchmark} & \textbf{Method} & \textbf{Validity (\%)} & \textbf{95\% CI} & \textbf{n} \\
+\hline
+PhyX & Baseline & 76.8 & [74.2, 79.4] & 500 \\
+PhyX & SFC & \textbf{91.7} & [89.8, 93.6] & 500 \\
+MATH & SFC & \textbf{93.2} & [91.5, 94.9] & 440 \\
+ScienceQA & SFC & \textbf{93.8} & [92.1, 95.5] & 612 \\
+ARC & SFC & \textbf{94.1} & [92.8, 95.4] & 570 \\
+\hline
+\end{tabular}
+\end{table}
+\begin{table*}[ht]
+\centering
+ % 表格线条颜色
+          % 表格文字颜色
+\caption{Performance comparison of Doubao under different sampling and control strategies.}
+\label{tab:doubao_results}
+\begin{tabular}{l|l|c|c|c|c}
+\hline
+\textbf{Model} & \textbf{Method} & \textbf{Attempts} & \textbf{Accuracy (\%)} & \textbf{Validity (\%)} & \textbf{Avg Time (s)} \\
+\hline
+Doubao & Single-pass baseline & 1.0$\times$ & 45.8 & 76.8 & 23.1 \\
+Doubao & Best-of-3 sampling & 3.0$\times$ & 47.2 & 79.1 & 69.3 \\
+Doubao & Best-of-5 sampling & 5.0$\times$ & 48.6 & 81.4 & 115.4 \\
+Doubao & Rejection sampling (adapt $\sigma$) & 2.3$\times$ & 48.1 & 80.6 & 53.2 \\
+Doubao & SFC (full pipeline) & 2.3$\times$ & \textbf{50.1} & \textbf{91.7} & 53.0 \\
+\hline
+\end{tabular}
+\end{table*}
+% --- Table 2 ---
+\begin{table*}[ht]
+\centering
+
+
+\caption{Statistical comparison between Baseline and SFC methods across benchmarks.}
+\label{tab:comparison_stats}
+\begin{tabular}{l|l|c|c|c|c|c}
+\hline
+\textbf{Benchmark} & \textbf{Method} & \textbf{Accuracy (\%)} & \textbf{Validity (\%)} & \textbf{p-value} & \textbf{Cohen's d} & \textbf{n} \\
+\hline
+PhyX & Baseline vs. SFC & 45.8 vs. 50.1 & 76.8 vs. 91.7 & $<$0.001 & 0.62 & 500 \\
+MATH & Baseline vs. SFC & 42.3 vs. 48.9 & 81.2 vs. 93.2 & $<$0.001 & 0.71 & 440 \\
+ScienceQA & Baseline vs. SFC & 78.6 vs. 82.4 & 85.1 vs. 93.8 & 0.002 & 0.44 & 612 \\
+ARC & Baseline vs. SFC & 82.4 vs. 85.3 & 88.9 vs. 94.1 & 0.008 & 0.35 & 570 \\
+\hline
+\end{tabular}
+\end{table*}
+\begin{table*}[ht]
+\centering
+
+
+\caption{Scaling behavior of validation with respect to graph complexity.}
+\label{tab:graph_validation}
+\begin{tabular}{l|l|l|l}
+\hline
+\textbf{Graph Nodes} & \textbf{Graph Edges} & \textbf{Validation Time (ms)} & \textbf{Total Attempts} \\
+\hline
+$6.2 \pm 1.4$ & $4.1 \pm 0.9$ & $612 \pm 85$ & $1.8 \pm 0.6$ \\
+$14.3 \pm 2.1$ & $9.2 \pm 1.8$ & $1431 \pm 221$ & $2.2 \pm 0.8$ \\
+$23.5 \pm 3.2$ & $15.8 \pm 2.7$ & $2356 \pm 418$ & $2.5 \pm 0.9$ \\
+$31.2 \pm 4.1$ & $21.3 \pm 3.5$ & $3124 \pm 562$ & $2.8 \pm 1.1$ \\
+\hline
+\end{tabular}
+\end{table*}
+\begin{table*}[ht]
+\centering
+
+
+\caption{Symbol definitions used throughout the paper.}
+\label{tab:symbol_definitions}
+\begin{tabular}{lll}
+\toprule
+\textbf{Symbol} & \textbf{Definition} & \textbf{Introduced} \\
+\midrule
+$X$ & Scientific query input & Sec.~3.1 \\
+$Y$ & LLM output (ordered sequence) & Sec.~3.1 \\
+$T$ & Scientific ground truth (subset of fact-options) & Sec.~3.1 \\
+$F$ & Universal set of all possible fact-options & Sec.~3.1 \\
+$f_i$ & Individual fact-option (claim) & Sec.~3.1 \\
+$C$ & Verified context accumulated during generation & Sec.~5.1 \\
+$G = (V, E)$ & Deducibility graph (vertices = facts, edges = dependencies) & Sec.~4.1 \\
+$\sigma(f_i \| C)$ & Feasibility score for fact-option $f_i$ given context $C$ & Sec.~5.2 \\
+$\tau$ & Conformal threshold (calibrated to target $\alpha$) & Sec.~5.1 \\
+$\alpha$ & Target error rate for conformal guarantee & Sec.~5.3 \\
+$\beta, \gamma$ & Domain-adaptive weights for soft and cross-modal validation & Sec.~5.2 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+\section{API Usage for Model Queries}
+\label{app:api-usage}
+
+We report a few important notes on the API calls made to OpenAI models for empirical evaluation of our algorithm:
+
+\begin{enumerate}
+\item A temperature of 1.0 was used to generate alternate responses for frequency scoring; a temperature of 0.0 was used for all other API calls.
+\item GPT-4 was used for the generation of outputs for the MATH questions.
+\item GPT-4 was used for self-consistency scoring, described in Appendix~\ref{app:costs}.
+\item GPT-4o was used for graph generation.
+\end{enumerate}
+
+\textbf{Dependency Graph Generation Prompt (MATH/PhyX)}
+
+\textbf{GPT-4o} Our prompt for graph generation includes in-context exemplars annotated with rationales (``commentary'') for guided decomposition of the model-generated output into claims and their relation to one another.
+
+\begin{quote}
+I'm going to give you a question and a series of claims in response to the question. I want you to create a dependency graph to represent the relationships between claims. The set of vertices should be the set of claims. Then, if a claim ``a'' relies on another claim ``b'' to be considered true, include edge $(b, a)$ in the graph (so a node's ancestors should contain all of its necessary assumptions). Vertices that are ``a priori'' (e.g., assumptions given in the question, definitions, etc.), should not have ancestors. Your final output will be an adjacency list.
+
+Next, I'll give you some examples to make this clear.
+
+\textbf{Question:} How many vertical asymptotes does the graph of $y = \frac{x}{x^2+1}$ have?
+
+\textbf{claim 1:} A function has vertical asymptotes exactly where its denominator equals zero. 
+\textbf{claim 2:} To solve for the vertical asymptotes of the function $y = \frac{x}{x^2+1}$, we therefore must solve $x^2 + 1 = 0$. 
+\textbf{claim 3:} For all real values of $x$, $x^2 + 1 > 0$ 
+\textbf{claim 4:} Thus, we conclude that the function $y = \frac{x}{x^2+1}$ has no vertical asymptotes.
+
+\textbf{Desired Output:} [[0,0,0,0],[1,0,0,0],[0,1,0,0],[0,1,1,0]]
+
+\textbf{Commentary:}
+You should output an object like the one above without any other reasoning or formatting. In particular, you should output an array of $n$ arrays, each of length $n$, where $n$ is the number of claims. If claim $j$ relies on the information from claim $i$, the $j$th array should have the $i$th entry = 1; otherwise this entry should be zero. In this case, note that claim 1 does not have ancestors, because it does not require other steps to be justified (we assume common mathematical theorems, like the presence of vertical asymptotes when the denominator is zero, to be a priori). However, claim 2 relies on the conclusion of claim 1 since it sets the denominator equal to zero. claim 3 implicitly relies on claim 2, since we derive this check from claim 2. Also, the final answer, claim 4, relies on combining information from both claims 2 and 3 (which describe the significance of the equation $x^2+1=0$ and its answer, respectively). Also note that in generating this graph, we represent implicit relationships between claims: claim 4, for instance, does not cite claims 2 and 3 explicitly, but it certainly relies on their contents. For this reason, we put those edges in its adjacency list. It is very important to represent all relationships in this way. In general, it is unlikely that a claim should be completely ``floating'' (not relied upon by or reliant upon another claim); in this case, it would not be contributing to the complete output. By convention, we never include a claim in its own adjacency list (we do not consider a claim to rely on itself).
+
+Here, we're interested in the dependency between claims, not just the correctness. For this reason, it's also important to represent these dependencies even in the case that an answer is wrong.
+\end{quote}
+
+\textbf{Llama-3.1-70B-Instruct} Llama had more difficulty with this task, especially replicating the dimensions of the adjacency list, so we reworked the few-shot prompt and gave more explicit instruction. Despite our best efforts, it occasionally output cyclic graphs, in which case we simply considered the trivial ``linear'' graph ($1 \Rightarrow 2 \Rightarrow \ldots \Rightarrow n$); our empirical results suggest that, while imperfect, its graphs were still useful.
+
+\begin{quote}
+You are a system designed to create dependency graphs for subclaims in response to a given question. Your output must strictly adhere to the following instructions:
+
+\textbf{1. Graph Description:}
+- Represent the dependency relationships between subclaims as a directed graph.
+- Each subclaim is a vertex in the graph.
+- An edge $(b \rightarrow a)$ exists if subclaim ``a'' depends on subclaim ``b.''
+- Subclaims that are ``a priori'' (e.g., assumptions or definitions) should not have any ancestors.
+
+\textbf{2. Output Format:}
+- Provide your graph as an adjacency list of size NUM $\times$ NUM, where NUM is the number of subclaims (this will be given at the beginning of the prompt).
+- Each entry in the adjacency list is a list of $n$ integers:
+- A value of 1 at position $i$ in row $j$ indicates that subclaim $j$ depends on subclaim $i$.
+- A value of 0 indicates no dependency.
+- Ensure no claim depends on itself (diagonal entries must be 0).
+
+\textbf{3. Rules:}
+- The adjacency list must be square, with $n$ rows and $n$ columns, where $n$ is the exact number of subclaims provided.
+- Each row and column must be exactly $n$ integers. Do not include extra rows, columns, or misaligned entries.
+- The output must consist solely of the adjacency list (e.g., [[0,1,0],[0,0,1],[0,0,0]]); do not include explanations, commentary, or any other formatting.
+
+\textbf{4. Dependencies:}
+- Consider explicit and implicit dependencies between subclaims. For example, if subclaim $j$ implicitly relies on subclaim $i$ (even if not stated directly), include the edge $(i \rightarrow j)$ in the graph.
+- Always represent dependencies, even if the subclaims are incorrect or contain logical errors.
+\end{quote}
+
+\textbf{Self-Consistency (Frequency) Scoring Prompt}
+
+\begin{quote}
+You will get a list of claims and piece of text. For each claim, score whether the text supports, contradicts, or is unrelated to the claim. Directly return a jsonl, where each line is \{``id'':[CLAIMID],``score'':[SCORE]\}. Directly return the jsonl with no explanation or other formatting. For the [SCORE], return 1 for supports, $-1$ for contradicts, and 0 for unrelated.
+
+The claims are: \{CLAIMS\}
+\end{quote}
+
+\textbf{Re-prompting with Filtered Output Prompt}
+
+\begin{quote}
+I am going to give you a question some starter work. Please fill in the starter work to provide a complete answer to the question. Question: [QUESTION], Starter Work: [STARTERWORK]
+\end{quote}
+
+
+
+\begin{table*}[t]
+\centering
+
+
+\caption{Effect of threshold tuning on validation performance.}
+\label{tab:threshold tuning}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Configuration} & \textbf{Validation Threshold} $\boldsymbol{\tau}$ & \textbf{Accuracy (\%)} & \textbf{Validity (\%)} & \textbf{\% Correct Filtered} \\
+\midrule
+Conservative & 0.05 & 47.3 & 96.2 & 8.2\% \\
+Balanced (default) & 0.10 & 50.1 & 91.7 & 3.1\% \\
+Aggressive & 0.20 & 52.1 & 84.3 & 1.2\% \\
+No validation & -- & 45.8 & 76.8 & -- \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+
+
+\caption{System validity and degradation across training and validation domains}
+\label{tab:across training}
+\begin{tabular}{l|l|c|c}
+\hline
+\textbf{Training Domain} & \textbf{Validation Domain} & \textbf{Validity (\%)} & \textbf{Degradation} \\
+\hline
+Physics (PhyX) & Physics (held-out) & 91.7 & – \\
+Physics (PhyX) & Math (MATH) & 89.3 & −2.4pp \\
+Physics (PhyX) & General Science (ScienceQA) & 87.8 & −3.9pp \\
+Pooled (all 4 domains) & Physics (held-out) & 90.4 & −1.3pp \\
+Pooled (all 4 domains) & Math (held-out) & 91.8 & – \\
+Pooled (all 4 domains) & Science (held-out) & 92.3 & – \\
+Pooled (all 4 domains) & ARC (held-out) & 91.2 & – \\
+\hline
+\end{tabular}
+\end{table*}
+
+\section{Ablation Study}
+\label{app:ablate}
+Table~\ref{tab:doubao_results} shows the contribution of equal computational budget comparisons: on PhyX, we compared SFC to rejection sampling, Best-of-N, and single-pass baselines using an equivalent 2.3× budget. The results show that under equal overhead, SFC simultaneously improves both accuracy and validity: this is not simply "achieved through more computation."
+
+\section{Validity Metrics \& Statistical Rigor}
+
+We clarified scientific validity as empirical consistency coverage rate 
+(the $1 - \alpha$ realization rate calibrated via split conformal prediction), 
+distinct from the ``pass rate'' of validators; 
+table~\ref{tab:validity_ci} and ~\ref{tab:comparison_stats} report 95\% confidence intervals and effect sizes, 
+and provide environment/hyperparameter/code and dataset release information to meet reproducibility requirements. 
+This aligns with the latest consensus on ``consistency/coherent factuality'': 
+measuring step correctness and coherence within a dependency graph context, 
+rather than making independent judgments on atomic claims.
+
+
+
+\paragraph{Hyperparameter Specifications.}
+\begin{itemize}
+    \item \textbf{Conformal} $\alpha = 0.10$ \, (can be tuned in the range $[0.05,\, 0.25]$)
+    \item \textbf{Domain weights:} $\beta = 0.4$, $\gamma = 0.3$ \, (learned via grid search on the validation set)
+    \item \textbf{Graph node timeout:} 500\,ms \, (hard limit to prevent hangs)
+\end{itemize}
+\section{Scalability \& Graph Complexity}
+
+
+As shown in table~\ref{tab:graph_validation}, our computational overhead grows primarily linearly with the number of nodes, while branching frequency increases only gradually with length because errors trigger backtracking from verified prefixes, suppressing exponential growth. Empirical measurements show that on longer sequences, verification time increases but the number of attempts remains between ~2–3, and can be further amortized through lightweight discriminators and batch processing.
+
+\section{Clarity of Technical Content}
+\label{app:notation}
+
+
+Table~\ref{tab:symbol_definitions} provided intuitive explanations first, then formal definitions; completed the definitions of $S(Y)$ and $r(X,Y,T)$,Here, $\mathcal{S}(Y)$ denotes the set of subclaims extracted from the model output $Y$, and $r(X,Y,T)$ denotes the non-conformity score measuring how well $Y$ aligns with the ground-truth facts $T$ given the input $X$. Supplied a notation table and ``linear dependency graph'' formal characterization; and explained why we adopt the ``worst-case term'' framing to ensure coverage and interpretability. This approach is fully aligned with the current practice of ``viewing reasoning as verifiable dependency subgraphs on which conformal calibration is performed.''
+
+
+
+
+
+\section{Threshold Analysis.}
+Table~\ref{tab:threshold tuning} present a threshold $\tau$-tunable Pareto frontier: a conservative threshold increases validity to 96.2\% with a slight reduction in accuracy; the default $\tau = 0.10$ balances both; an aggressive threshold can trade off for higher coverage. This approach aligns with the framework in consistent conformal prediction literature, where ``target coverage rate can be calibrated,'' and allows scenario-specific configuration.
+
+
+
+\section{Cross-Domain Robustness Evaluation}
+Table~\ref{tab:across training} evaluates the robustness of our system across domains. When trained only on the Physics dataset (PhyX), our method achieves 91.7\% validity on held-out physics questions. Out-of-domain performance degrades only modestly, reaching 89.3\% on Math (−2.4pp) and 87.8\% on ScienceQA (−3.9pp), indicating reasonable cross-domain generalization despite domain-specific symbolic and neural checks. Training on a pooled dataset spanning all four domains yields consistently strong validity: 90.4\% on held-out physics, 91.8\% on Math, 92.3\% on Science, and 91.2\% on ARC. These results show that our approach remains robust as it scales across domains, alleviating concerns about brittleness or domain specificity.
+
+
+\end{document}
